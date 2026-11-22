@@ -199,7 +199,9 @@ export const DEFAULT_SETTINGS = {
   },
   accountingBasis: 'cash', // cash | accruals (for income-tax purposes)
   businessStartDate: '',
-  vat: { registered: false, number: '', scheme: 'standard', flatRatePct: 0, stagger: 'quarterly' },
+  // platformPayouts: how VAT is coded on bank rows from ad networks and app stores, whose treatment depends on which
+  // legal entity pays you. 'undecided' = no VAT assumed and the row is flagged; 'OB' = sale to an overseas business; 'S' = UK standard-rated.
+  vat: { registered: false, number: '', scheme: 'standard', flatRatePct: 0, stagger: 1, platformPayouts: 'undecided' },
   invoice: {
     prefix: 'INV-', nextNumber: 1, creditPrefix: 'CN-', nextCreditNumber: 1, paymentTermsDays: 30,
     notes: '', footer: 'Thank you for your business.', bankDetails: '', padding: 4,

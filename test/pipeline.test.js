@@ -283,3 +283,56 @@ test('VAT-registered: money in carries estimated output VAT; money out claims no
   assert.equal(payout.vat_estimated, true);
   assert.equal(fuel.vat_amount, 0);
 });
+
+test('company: ad-network and app-store payouts are not assumed to carry UK VAT; Stripe payouts still are', async () => {
+  const csv = 'Date,Description,Debit,Credit\n10/04/2025,GOOGLE ADMOB PAYMENT,,1200.00\n12/04/2025,APPLE DISTRIBUTION INTERNATIONAL,,600.00\n14/04/2025,STRIPE PAYOUT,,1200.00';
+  const stage = async (vat) => {
+    const db = freshDb({ entityType: 'company', company: { name: 'Pixel Pond Ltd' }, vat: { registered: true, ...vat } });
+    const parsed = await parseUpload({ filename: 'x.csv', buffer: buf(csv) }, {});
+    return stageBatch(db, parsed, { filename: 'x.csv', accountId: 1, settings: getSettings(db) }).items;
+  };
+  const by = (items, d) => items.find((i) => i.description.startsWith(d));
+
+  // Default ('undecided'): no VAT assumed, flagged so the user decides once.
+  let items = await stage({});
+  assert.equal(by(items, 'GOOGLE ADMOB').category_id, 'co_advertising_income');
+  assert.equal(by(items, 'GOOGLE ADMOB').vat_code, 'N');
+  assert.equal(by(items, 'GOOGLE ADMOB').vat_amount, 0);
+  assert.ok(by(items, 'GOOGLE ADMOB').flags.includes('vat_check'));
+  assert.ok(by(items, 'APPLE DIST').flags.includes('vat_check'));
+  assert.equal(by(items, 'STRIPE').vat_amount, gbp(200), 'subscription income from UK customers is still standard-rated');
+  assert.ok(!by(items, 'STRIPE').flags.includes('vat_check'));
+
+  // Paid by an overseas company: outside UK VAT (Box 6), no VAT, no flag.
+  items = await stage({ platformPayouts: 'OB' });
+  assert.equal(by(items, 'GOOGLE ADMOB').vat_code, 'OB');
+  assert.equal(by(items, 'GOOGLE ADMOB').vat_amount, 0);
+  assert.ok(!by(items, 'GOOGLE ADMOB').flags.includes('vat_check'));
+
+  // Paid by a UK company: 20% is inside the payout.
+  items = await stage({ platformPayouts: 'S' });
+  assert.equal(by(items, 'GOOGLE ADMOB').vat_code, 'S');
+  assert.equal(by(items, 'GOOGLE ADMOB').vat_amount, gbp(200));
+});
+
+test('platform payout VAT setting is validated and the threshold monitor reports how much of the turnover is platform income', async () => {
+  const { validateSettings } = await import('../server/routes/core.js');
+  assert.equal(validateSettings({ vat: { platformPayouts: 'OB' } }).vat.platformPayouts, 'OB');
+  assert.throws(() => validateSettings({ vat: { platformPayouts: 'maybe' } }));
+  const { companyDb, addTxn } = await import('./helpers.js');
+  const { vatThresholdCheck } = await import('../server/domain/vat.js');
+  const { db } = companyDb();
+  addTxn(db, { date: '2025-09-01', amount: 3000, category: 'co_advertising_income' });
+  addTxn(db, { date: '2025-09-02', amount: 1000, category: 'co_subscriptions' });
+  const v = vatThresholdCheck(db, '2025-12-01');
+  assert.equal(v.turnover, gbp(4000));
+  assert.equal(v.platformPayouts, gbp(3000));
+});
+
+test('the default settings pass their own validation: registering for VAT on a fresh install can be saved', async () => {
+  const { validateSettings } = await import('../server/routes/core.js');
+  const db = freshDb();
+  const vat = getSettings(db).vat;
+  assert.ok([1, 2, 3].includes(vat.stagger), 'default VAT stagger is a real stagger group');
+  assert.doesNotThrow(() => validateSettings({ vat: { ...vat, registered: true } }));
+});

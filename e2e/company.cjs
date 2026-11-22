@@ -220,6 +220,21 @@ const step = async (name, fn) => {
     await shot('08_dashboard');
   });
 
+  await step('VAT: how ad-network / app-store payouts are treated is a setting, saved, and flagged until decided', async () => {
+    await fresh('/#/settings?tab=tax');
+    await page.getByLabel("I'm VAT registered").check();
+    const sel = page.getByLabel('Ad-network and app-store payouts');
+    await sel.waitFor();
+    assert.equal(await sel.inputValue(), 'undecided', 'defaults to "not decided": no UK VAT is assumed on ad income');
+    await sel.selectOption('OB');
+    await page.getByRole('button', { name: 'Save', exact: true }).click(); await toast(/Settings saved/);
+    assert.equal((await api('GET', '/api/settings')).body.vat.platformPayouts, 'OB');
+    await shot('09_vat_setting');
+    // undo, so later steps see the same books as before
+    await page.getByLabel("I'm VAT registered").uncheck();
+    await page.getByRole('button', { name: 'Save', exact: true }).click(); await toast(/Settings saved/);
+  });
+
   await step('mobile: no company page overflows a phone screen', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const tab of ['overview', 'accounts', 'computation', 'directors', 'assets']) {

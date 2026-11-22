@@ -48,6 +48,7 @@ export function FlagBadges({ item }) {
   if (item.duplicate) out.push(html`<${Badge} tone="warn" title="Already in your records">Duplicate</${Badge}>`);
   if (f.includes('direction_guessed')) out.push(html`<${Badge} tone="warn" title="Could not tell whether money went in or out – check the sign">Check direction</${Badge}>`);
   if (f.includes('no_date')) out.push(html`<${Badge} tone="warn">No date</${Badge}>`);
+  if (f.includes('vat_check')) out.push(html`<${Badge} tone="warn" title="VAT depends on which company pays you. No VAT has been assumed – set the treatment in Settings, Tax & VAT">Check VAT</${Badge}>`);
   if (f.some((x) => x.startsWith('foreign_currency'))) out.push(html`<${Badge} tone="warn" title="Not in pounds – amount is NOT converted">${(f.find((x) => x.startsWith('foreign')) || '').split(':')[1] || 'FX'}</${Badge}>`);
   if (f.includes('unpaid_supplier_invoice')) out.push(html`<${Badge} tone="warn" title="Unpaid supplier invoice – under the cash basis it only counts when paid">Unpaid bill</${Badge}>`);
   if (f.includes('totals_mismatch')) out.push(html`<${Badge} tone="warn" title="Net + VAT did not equal the total on the document">Totals differ</${Badge}>`);

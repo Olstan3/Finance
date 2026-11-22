@@ -59,6 +59,7 @@ export function validateSettings(p) {
     if (v.number !== undefined) o.number = str(v.number, 20);
     if (v.scheme !== undefined) { if (!['standard', 'cash'].includes(v.scheme)) bad('Only the standard and cash accounting VAT schemes are supported', 'scheme'); o.scheme = v.scheme; }
     if (v.stagger !== undefined) { if (![1, 2, 3].includes(Number(v.stagger))) bad('Stagger must be 1, 2 or 3', 'stagger'); o.stagger = Number(v.stagger); }
+    if (v.platformPayouts !== undefined) { if (!['undecided', 'OB', 'S'].includes(v.platformPayouts)) bad('Choose how VAT applies to ad-network and app-store payouts', 'platformPayouts'); o.platformPayouts = v.platformPayouts; }
     out.vat = o;
   }
   if (p.invoice) {

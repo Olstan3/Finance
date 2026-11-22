@@ -60,12 +60,23 @@ function findContact(db, contacts, name) {
     || null;
 }
 
-function vatFor(item, settings, direction) {
+/** Income categories paid by a platform (ad network, app store). Which VAT treatment applies depends on the paying legal entity, not on where the users are. */
+export const PLATFORM_PAYOUT_CATEGORIES = new Set(['co_advertising_income', 'co_inapp']);
+
+function vatFor(item, settings, direction, categoryId) {
   if (!settings.vat.registered) return { vat_code: 'N', vat_amount: 0 };
   if (item.vat != null && item.kind === 'document') {
     const rate = item.vatRate ?? (item.net ? item.vat / item.net : null);
     const code = item.vat === 0 ? 'Z' : rate && Math.abs(rate - 0.05) < 0.01 ? 'R' : 'S';
     return { vat_code: code, vat_amount: item.vat };
+  }
+  // A payout from an ad network or app store is not assumed to carry UK VAT. The setting decides; until it is set the row
+  // is left with no VAT and flagged so it shows up in the VAT worksheet warning.
+  if (direction === 'in' && PLATFORM_PAYOUT_CATEGORIES.has(categoryId)) {
+    const choice = settings.vat.platformPayouts || 'undecided';
+    if (choice === 'OB') return { vat_code: 'OB', vat_amount: 0 };
+    if (choice === 'S') return { vat_code: 'S', vat_amount: Math.abs(vatFromGross(item.amount, 0.2)), estimated: true };
+    return { vat_code: 'N', vat_amount: 0, check: true };
   }
   // Bank rows have no VAT detail. Money IN is assumed to carry output VAT (you must account for it);
   // money OUT is NOT assumed to be reclaimable without a VAT receipt.
@@ -151,7 +162,8 @@ export function enrichItems(db, parsed, { accountId, settings = getSettings(db) 
     if (doc && direction === 'in') category_id = category_id && category_id !== 'drawings' ? category_id : (settings.entityType === 'company' ? 'co_other_income' : 'se_turnover');
     const confidence = Math.min(sugg.confidence, raw.confidence ?? 1);
 
-    const vat = vatFor(raw, settings, direction);
+    const vat = vatFor(raw, settings, direction, category_id);
+    if (vat.check) flags.push('vat_check');
     const fp = fingerprint({ account_id: acct, date, amount: raw.amount, description: raw.description, externalId: raw.externalId });
     const occ = (seen.get(fp) || 0) + 1;
     seen.set(fp, occ);

@@ -111,9 +111,14 @@ export function vatThresholdCheck(db, asOf = today()) {
   const from = addDays(addMonths(asOf, -12), 1);
   const cats = categoryMap(db);
   let turnover = 0;
+  let platformPayouts = 0; // ad-network / app-store income: whether it counts towards the threshold depends on who pays you
   for (const t of db.all("SELECT * FROM transactions WHERE date >= ? AND date <= ? AND status != 'ignored' AND amount > 0", from, asOf)) {
     const c = cats[t.category_id];
-    if (c && c.kind === 'income' && ['self_employment', 'company'].includes(c.section)) turnover += t.amount - Math.abs(t.vat_amount || 0);
+    if (c && c.kind === 'income' && ['self_employment', 'company'].includes(c.section)) {
+      const net = t.amount - Math.abs(t.vat_amount || 0);
+      turnover += net;
+      if (c.id === 'co_advertising_income' || c.id === 'co_inapp') platformPayouts += net;
+    }
   }
   // Accruals users also have issued invoices (unpaid) that count; include unpaid issued ones not yet linked.
   const unpaid = db.all(
@@ -121,5 +126,5 @@ export function vatThresholdCheck(db, asOf = today()) {
      AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.invoice_id = i.id)`, from, asOf);
   for (const u of unpaid) for (const l of db.all('SELECT * FROM invoice_lines WHERE invoice_id = ?', u.id)) turnover += lineTotals(l).net;
   const limit = THRESHOLDS.vatRegistration * 100;
-  return { from, to: asOf, turnover, limit, pct: limit ? turnover / limit : 0, over: turnover > limit, near: turnover >= limit * 0.8 };
+  return { from, to: asOf, turnover, platformPayouts, limit, pct: limit ? turnover / limit : 0, over: turnover > limit, near: turnover >= limit * 0.8 };
 }

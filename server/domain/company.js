@@ -539,7 +539,7 @@ export function companyWarnings(db, settings, period, { pnl, bs, ct, loans }) {
   if (loans.total > 0) add(loans.over10k ? 'error' : 'warn', `Directors owe the company ${fmtGBP(loans.total)} at the year end. Unless repaid by ${fmtDate(loans.repayBy)} the company pays an extra Corporation Tax charge (s455) of about ${fmtGBP(loans.s455)}${loans.over10k ? ', and loans over £10,000 are also a taxable benefit for the director' : ''}. Pay it back, or declare a dividend, before then.`, { tab: 'directors' });
   if (ct.rows.some((r) => r.tradingLoss > 0)) add('info', 'The company made a trading loss. It is carried forward to set against future profits – enter it as "Trading losses brought forward" next year.');
   if (bs.fixedAssets.rows.length) add('info', `${bs.fixedAssets.rows.length} equipment item(s) are on your asset register and depreciated over ${[...new Set(bs.fixedAssets.rows.map((r) => r.life_years))].join('/')} years in the accounts. For tax they get the Annual Investment Allowance (100% up to £1m).`, { tab: 'assets' });
-  if (!settings.vat.registered && pnl.turnover > 80000 * 100) add('warn', 'Turnover is approaching the £90,000 VAT registration threshold. Income from overseas ad networks counts towards it.');
+  if (!settings.vat.registered && pnl.turnover > 80000 * 100) add('warn', 'Turnover is approaching the £90,000 VAT registration threshold. Whether ad-network and app-store payouts count towards it depends on which company pays you, so check before relying on either answer.');
   add('info', 'R&D tax relief may be available if you develop new software or apps. It is not calculated here – ask an accountant.');
   return w;
 }
