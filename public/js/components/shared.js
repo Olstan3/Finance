@@ -59,3 +59,11 @@ export function FlagBadges({ item }) {
 }
 
 export { Btn, fmtDate };
+
+
+/** A worksheet (accounts, computation, CT600…) rendered as rows: box, label, value. */
+export function FormCard({ form, onDrill }) {
+  return html`<div class="card"><div class="card-head"><h2 class="grow">${form.title}</h2>${form.applies === false ? html`<${Badge}>Not needed</${Badge}>` : ''}</div>
+    <p class="muted small">${form.intro}</p>
+    ${form.pages.filter((p) => p.rows.length).map((p) => html`<div class="ws-title">${p.title}</div>${p.rows.map((r) => html`<div class=${`ws-row${r.emphasis ? ' emph' : ''}`}><span class="box">${r.box ? `Box ${r.box}${r.inferred ? '†' : ''}` : ''}</span><span>${r.label}${r.note ? html`<div class="muted small">${r.note}</div>` : ''}</span><span class="val">${r.type === 'money' ? gbp(r.value) : r.type === 'yesno' ? (r.value ? 'Yes' : 'No') : r.value ?? ''}</span></div>`)}`)}</div>`;
+}

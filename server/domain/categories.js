@@ -49,6 +49,31 @@ export const BUILTIN_CATEGORIES = [
   { id: 'drawings', name: 'Owner drawings / personal spending', kind: 'personal', section: 'none', taxField: 'none' },
   { id: 'capital_in', name: 'Capital introduced / loans received', kind: 'other', section: 'none', taxField: 'none' },
   { id: 'hmrc_payment', name: 'HMRC tax payment (Self Assessment)', kind: 'tax', section: 'none', taxField: 'tax.payment' },
+  // ---- Limited company ----
+  { id: 'co_subscriptions', name: 'Subscription revenue', kind: 'income', section: 'company', taxField: 'co.turnover' },
+  { id: 'co_advertising_income', name: 'Advertising revenue (ad networks)', kind: 'income', section: 'company', taxField: 'co.turnover' },
+  { id: 'co_inapp', name: 'App store & in-app sales', kind: 'income', section: 'company', taxField: 'co.turnover' },
+  { id: 'co_other_income', name: 'Other trading income', kind: 'income', section: 'company', taxField: 'co.turnover' },
+  { id: 'co_interest', name: 'Bank interest received', kind: 'income', section: 'company', taxField: 'co.interest' },
+  { id: 'co_hosting', name: 'Hosting, servers & cloud', kind: 'expense', section: 'company', taxField: 'co.hosting' },
+  { id: 'co_domains', name: 'Domain names', kind: 'expense', section: 'company', taxField: 'co.domains' },
+  { id: 'co_software', name: 'Software & online tools', kind: 'expense', section: 'company', taxField: 'co.software' },
+  { id: 'co_platform_fees', name: 'App store & payment platform fees', kind: 'expense', section: 'company', taxField: 'co.platformFees' },
+  { id: 'co_marketing', name: 'Marketing & user acquisition', kind: 'expense', section: 'company', taxField: 'co.marketing' },
+  { id: 'co_contractors', name: 'Contractors & freelancers', kind: 'expense', section: 'company', taxField: 'co.contractors' },
+  { id: 'co_professional', name: 'Accountancy, legal & professional fees', kind: 'expense', section: 'company', taxField: 'co.professional' },
+  { id: 'co_admin', name: 'Companies House & admin fees', kind: 'expense', section: 'company', taxField: 'co.admin' },
+  { id: 'co_bank', name: 'Bank & card charges', kind: 'expense', section: 'company', taxField: 'co.bank' },
+  { id: 'co_insurance', name: 'Insurance', kind: 'expense', section: 'company', taxField: 'co.insurance' },
+  { id: 'co_office', name: 'Office, phone & internet', kind: 'expense', section: 'company', taxField: 'co.office' },
+  { id: 'co_travel', name: 'Travel', kind: 'expense', section: 'company', taxField: 'co.travel' },
+  { id: 'co_entertainment', name: 'Entertainment (not allowable)', kind: 'expense', section: 'company', taxField: 'co.entertainment', allowable: 0 },
+  { id: 'co_other', name: 'Other expenses', kind: 'expense', section: 'company', taxField: 'co.other' },
+  { id: 'co_equipment', name: 'Equipment & computers (added to assets)', kind: 'capital', section: 'company', taxField: 'co.capital' },
+  { id: 'dla_movement', name: "Director's loan – money to or from a director", kind: 'transfer', section: 'equity', taxField: 'co.dla' },
+  { id: 'dividend_paid', name: 'Dividend paid to shareholders', kind: 'other', section: 'equity', taxField: 'co.dividend' },
+  { id: 'share_capital', name: 'Share capital paid in', kind: 'other', section: 'equity', taxField: 'co.shareCapital' },
+  { id: 'ct_payment', name: 'Corporation Tax payment', kind: 'tax', section: 'equity', taxField: 'co.ctPayment' },
   { id: 'vat_payment', name: 'VAT paid to / refunded by HMRC', kind: 'tax', section: 'none', taxField: 'vat.payment' },
 ];
 
@@ -59,7 +84,17 @@ export const SECTION_LABELS = {
   dividends: 'Dividends',
   reliefs: 'Reliefs',
   none: 'Not taxable / ignored',
+  company: 'Company',
+  equity: 'Company equity, tax & directors',
 };
+
+/** Which category sections make sense for each type of business (the rest stay in the database but are hidden from pickers). */
+export const SECTIONS_BY_ENTITY = {
+  individual: ['self_employment', 'property', 'savings', 'dividends', 'reliefs', 'none'],
+  company: ['company', 'equity', 'none'],
+};
+// Categories that only make sense for one entity type, even though their section is shared.
+export const HIDDEN_FOR_COMPANY = new Set(['drawings', 'hmrc_payment', 'capital_in']);
 
 export function seedCategories(db) {
   const ins = db.prepare(

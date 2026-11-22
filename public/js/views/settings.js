@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
-import { html, Btn, Badge, Notice, Modal, Field, MoneyInput, Empty, Loading, useAsync, Tabs } from '../components/ui.js';
+import { html, Btn, Badge, Notice, Modal, Field, MoneyInput, Empty, Loading, useAsync, Tabs, Seg } from '../components/ui.js';
 import { CategorySelect, PageHead } from '../components/shared.js';
 import { api } from '../api.js';
 import { useStore, refreshMeta, toast, toastError } from '../store.js';
@@ -20,12 +20,37 @@ function useSettingsForm(path) {
   return { f, set, err, saving, dirty, save };
 }
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 function Details() {
   const { f, set, err, saving, dirty, save } = useSettingsForm();
-  const p = f.profile;
-  return html`<div class="card stack">
+  const p = f.profile, c = f.company;
+  const co = f.entityType === 'company';
+  const dirs = c.directors || [];
+  const setDir = (i, patch) => set('company', 'directors', dirs.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  return html`<div class="stack">
+    <div class="card stack"><h2>What kind of business is this?</h2>
+      <${Seg} label="Business type" value=${f.entityType} onChange=${(v) => set(null, 'entityType', v)} options=${[{ value: 'individual', label: 'Self-employed / landlord' }, { value: 'company', label: 'Limited company' }]} />
+      <p class="muted small" style="margin:0">${co ? 'A limited company files a Company Tax Return (CT600) and accounts, uses accruals accounting, and its directors are paid by dividends or salary.' : 'You file a Self Assessment tax return with supplementary pages (SA103 self-employment, SA105 property…).'} You can switch later; your records are kept either way.</p></div>
     ${err._ && html`<${Notice} tone="error">${err._}</${Notice}>`}
-    <div class="form-grid"><${Field} label="Your full name" class="span2"><input type="text" value=${p.name} onInput=${(e) => set('profile', 'name', e.target.value)} /></${Field}>
+    ${co ? html`<div class="card stack"><h2>Company details</h2><div class="form-grid">
+        <${Field} label="Company name" class="span2"><input type="text" value=${c.name} onInput=${(e) => set('company', 'name', e.target.value)} /></${Field}>
+        <${Field} label="Company number" hint="From Companies House, 8 characters" error=${err.number}><input type="text" value=${c.number} onInput=${(e) => set('company', 'number', e.target.value)} /></${Field}>
+        <${Field} label="Corporation Tax UTR" hint="10 digits, sent by HMRC after you register for Corporation Tax" error=${err.utr}><input type="text" inputmode="numeric" value=${c.utr} onInput=${(e) => set('company', 'utr', e.target.value)} /></${Field}>
+        <${Field} label="Date incorporated" error=${err.incorporationDate}><input type="date" value=${c.incorporationDate || ''} onInput=${(e) => set('company', 'incorporationDate', e.target.value)} /></${Field}>
+        <${Field} label="Financial year ends" hint="Your accounting reference date"><div class="row" style="flex-wrap:nowrap"><input type="number" min="1" max="31" style="width:80px" value=${c.yearEndDay} onInput=${(e) => set('company', 'yearEndDay', Number(e.target.value))} /><select value=${c.yearEndMonth} onChange=${(e) => set('company', 'yearEndMonth', Number(e.target.value))}>${MONTH_NAMES.map((m, i) => html`<option value=${i + 1}>${m}</option>`)}</select></div></${Field}>
+        <${Field} label="Registered office" class="span2"><textarea value=${c.registeredOffice} onInput=${(e) => set('company', 'registeredOffice', e.target.value)} /></${Field}><${Field} label="Postcode"><input type="text" value=${c.postcode} onInput=${(e) => set('company', 'postcode', e.target.value)} /></${Field}>
+        <${Field} label="What the company does" class="span2"><input type="text" value=${c.natureOfBusiness} onInput=${(e) => set('company', 'natureOfBusiness', e.target.value)} /></${Field}>
+        <${Field} label="Share capital paid in (£)" hint="e.g. 100 for 100 £1 shares" error=${err.shareCapital}><input type="number" min="0" step="any" value=${c.shareCapital} onInput=${(e) => set('company', 'shareCapital', Number(e.target.value))} /></${Field}>
+        <${Field} label="Associated companies" hint="Others under common control. Usually 0." error=${err.associatedCompanies}><input type="number" min="0" value=${c.associatedCompanies} onInput=${(e) => set('company', 'associatedCompanies', Number(e.target.value))} /></${Field}></div></div>
+      <div class="card stack"><div class="card-head"><h2 class="grow">Directors & shareholders</h2><${Btn} small icon="plus" onClick=${() => set('company', 'directors', [...dirs, { id: '', name: '', shares: 0 }])}>Add</${Btn}></div>
+        <p class="muted small" style="margin:0">Each person gets a director's-loan account automatically. Shares decide how dividends are split.</p>
+        ${err.directors && html`<div class="field-error">${err.directors}</div>`}
+        ${dirs.length === 0 && html`<p class="muted small">No directors added yet.</p>`}
+        ${dirs.map((d, i) => html`<div class="row" style="flex-wrap:nowrap"><input type="text" aria-label="Director name" placeholder="Full name" value=${d.name} onInput=${(e) => setDir(i, { name: e.target.value })} /><input type="number" aria-label="Shares" min="0" style="width:120px" placeholder="Shares" value=${d.shares} onInput=${(e) => setDir(i, { shares: Number(e.target.value) })} /><button class="btn ghost small" aria-label="Remove director" onClick=${() => set('company', 'directors', dirs.filter((_, k) => k !== i))}>✕</button></div>`)}</div>
+      <div class="card stack"><h2>Contact details for invoices</h2><div class="form-grid"><${Field} label="Email" error=${err.email}><input type="email" value=${p.email} onInput=${(e) => set('profile', 'email', e.target.value)} /></${Field}><${Field} label="Phone"><input type="tel" value=${p.phone} onInput=${(e) => set('profile', 'phone', e.target.value)} /></${Field}>
+        <${Field} label="Other names the company appears under" class="full" hint="Comma-separated. Helps tell whether an uploaded invoice is one you sent (income) or received (expense)."><input type="text" value=${p.aliases} onInput=${(e) => set('profile', 'aliases', e.target.value)} /></${Field}></div></div>`
+    : html`<div class="card stack"><div class="form-grid"><${Field} label="Your full name" class="span2"><input type="text" value=${p.name} onInput=${(e) => set('profile', 'name', e.target.value)} /></${Field}>
       <${Field} label="Trading name" hint="If different"><input type="text" value=${p.tradingName} onInput=${(e) => set('profile', 'tradingName', e.target.value)} /></${Field}>
       <${Field} label="Unique Taxpayer Reference (UTR)" hint="10 digits, from HMRC" error=${err.utr}><input type="text" inputmode="numeric" value=${p.utr} onInput=${(e) => set('profile', 'utr', e.target.value)} /></${Field}>
       <${Field} label="National Insurance number" error=${err.nino}><input type="text" value=${p.nino} onInput=${(e) => set('profile', 'nino', e.target.value)} /></${Field}>
@@ -33,22 +58,23 @@ function Details() {
       <${Field} label="Phone"><input type="tel" value=${p.phone} onInput=${(e) => set('profile', 'phone', e.target.value)} /></${Field}>
       <${Field} label="Address" class="span2"><textarea value=${p.address} onInput=${(e) => set('profile', 'address', e.target.value)} /></${Field}><${Field} label="Postcode"><input type="text" value=${p.postcode} onInput=${(e) => set('profile', 'postcode', e.target.value)} /></${Field}>
       <${Field} label="What your business does" class="span2"><input type="text" value=${p.businessDescription} onInput=${(e) => set('profile', 'businessDescription', e.target.value)} /></${Field}><${Field} label="Business postcode"><input type="text" value=${p.businessPostcode} onInput=${(e) => set('profile', 'businessPostcode', e.target.value)} /></${Field}>
-      <${Field} label="Other names you appear under on documents" class="full" hint="Comma-separated. Used to tell whether an uploaded invoice is one you sent (income) or received (expense)."><input type="text" value=${p.aliases} placeholder="e.g. ST Design, S Taylor" onInput=${(e) => set('profile', 'aliases', e.target.value)} /></${Field}></div>
-    <div><${Btn} kind="primary" disabled=${!dirty || saving} onClick=${() => save({ profile: f.profile })}>Save</${Btn}></div></div>`;
+      <${Field} label="Other names you appear under on documents" class="full" hint="Comma-separated. Used to tell whether an uploaded invoice is one you sent (income) or received (expense)."><input type="text" value=${p.aliases} placeholder="e.g. ST Design, S Taylor" onInput=${(e) => set('profile', 'aliases', e.target.value)} /></${Field}></div></div>`}
+    <div><${Btn} kind="primary" disabled=${!dirty || saving} onClick=${() => save({ entityType: f.entityType, profile: f.profile, ...(co || f.company.name ? { company: f.company } : {}) })}>Save</${Btn}></div></div>`;
 }
 
 function TaxVat() {
   const { f, set, err, saving, dirty, save } = useSettingsForm();
   return html`<div class="stack">
-    <div class="card stack"><h2>Tax</h2>${err._ && html`<${Notice} tone="error">${err._}</${Notice}>`}
+    ${f.entityType === 'company' ? html`<div class="card stack"><h2>Tax</h2><p class="muted small" style="margin:0">Limited companies pay Corporation Tax on profit and must use accruals accounting (income counted when invoiced or earned, not when paid). Set your year end and company details under <a href="#/settings">Your details</a>.</p></div>`
+    : html`<div class="card stack"><h2>Tax</h2>${err._ && html`<${Notice} tone="error">${err._}</${Notice}>`}
       <div class="form-grid"><${Field} label="Where you live for tax" hint="Scottish taxpayers have different Income Tax bands"><select value=${f.profile.region} onChange=${(e) => set('profile', 'region', e.target.value)}><option value="england">England, Wales or Northern Ireland</option><option value="scotland">Scotland</option></select></${Field}>
         <${Field} label="How income is counted" hint="Cash basis is the default for sole traders: income when paid, expenses when paid."><select value=${f.accountingBasis} onChange=${(e) => set(null, 'accountingBasis', e.target.value)}><option value="cash">Cash basis (when money moves)</option><option value="accruals">Traditional accounting (when invoiced)</option></select></${Field}>
         <${Field} label="Business start date" hint="Optional"><input type="date" value=${f.businessStartDate || ''} onInput=${(e) => set(null, 'businessStartDate', e.target.value)} /></${Field}>
-        <${Field} label="MTD quarters" hint="Standard (6 Apr–5 Jul…) or calendar (1 Apr–30 Jun…)"><select value=${f.mtd.quarterlyScheme} onChange=${(e) => set('mtd', 'quarterlyScheme', e.target.value)}><option value="standard">Standard quarters</option><option value="calendar">Calendar quarters</option></select></${Field}></div></div>
+        <${Field} label="MTD quarters" hint="Standard (6 Apr–5 Jul…) or calendar (1 Apr–30 Jun…)"><select value=${f.mtd.quarterlyScheme} onChange=${(e) => set('mtd', 'quarterlyScheme', e.target.value)}><option value="standard">Standard quarters</option><option value="calendar">Calendar quarters</option></select></${Field}></div></div>`}
     <div class="card stack"><h2>VAT</h2><label class="check"><input type="checkbox" checked=${f.vat.registered} onChange=${(e) => set('vat', 'registered', e.target.checked)} /> I'm VAT registered</label>
       ${f.vat.registered && html`<div class="form-grid"><${Field} label="VAT number"><input type="text" value=${f.vat.number} onInput=${(e) => set('vat', 'number', e.target.value)} /></${Field}>
         <${Field} label="Accounting scheme"><select value=${f.vat.scheme} onChange=${(e) => set('vat', 'scheme', e.target.value)}><option value="standard">Standard (VAT on invoice date)</option><option value="cash">Cash accounting (VAT when paid)</option></select></${Field}>
-        <${Field} label="Quarter ends" hint="Your VAT stagger group"><select value=${f.vat.stagger} onChange=${(e) => set('vat', 'stagger', Number(e.target.value))}><option value="1">Mar / Jun / Sep / Dec</option><option value="2">Jan / Apr / Jul / Oct</option><option value="3">Feb / May / Aug / Nov</option></select></${Field}></div><p class="muted small">The flat-rate scheme isn't supported. Registering means invoices can show VAT and income/expenses are reported excluding it.</p>`}</div>
+        <${Field} label="Quarter ends" hint="Your VAT stagger group"><select value=${f.vat.stagger} onChange=${(e) => set('vat', 'stagger', Number(e.target.value))}><option value="1">Mar / Jun / Sep / Dec</option><option value="2">Jan / Apr / Jul / Oct</option><option value="3">Feb / May / Aug / Nov</option></select></${Field}></div><p class="muted small">The flat-rate scheme isn't supported. Registering means invoices can show VAT and income/expenses are reported excluding it.${f.entityType === 'company' ? ' For overseas customers (ad networks, app stores) use the VAT code “Sale to overseas business”; for hosting, domains and software bought from overseas suppliers use “Reverse charge”.' : ''}</p>`}</div>
     <div class="card stack"><h2>Importing</h2><${Field} label=${`Confidence needed to mark an imported row as "checked": ${Math.round(f.importer.autoRecordConfidence * 100)}%`} hint="Rows below this are saved but flagged for review. Higher = you check more."><input type="range" min="0.4" max="0.95" step="0.05" value=${f.importer.autoRecordConfidence} onInput=${(e) => set('importer', 'autoRecordConfidence', Number(e.target.value))} /></${Field}></div>
     <div><${Btn} kind="primary" disabled=${!dirty || saving} onClick=${() => save({ profile: { region: f.profile.region }, accountingBasis: f.accountingBasis, businessStartDate: f.businessStartDate, mtd: f.mtd, vat: f.vat, importer: f.importer })}>Save</${Btn}></div></div>`;
 }
@@ -77,7 +103,7 @@ function Accounts() {
     <div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th class="num">Balance</th></tr></thead><tbody>${meta.accounts.map((a) => html`<tr class="clickable" onClick=${() => api.get('/api/accounts').then(() => open({ ...a, opening_balance: a.opening_balance ?? 0 }))}><td>${a.name}</td><td><${Badge}>${a.kind}</${Badge}></td><td class="num">${gbp(a.balance)}</td></tr>`)}</tbody></table></div>
     <p class="muted small" style="margin-top:8px">The “Cash & receipts” account holds receipts and invoices you upload that don't yet match a bank line. When the bank line arrives, the two are merged automatically.</p>
     ${modal && html`<${Modal} title=${modal.id ? 'Edit account' : 'Add account'} onClose=${() => setModal(null)} footer=${html`${modal.id && html`<${Btn} kind="danger" onClick=${del}>Remove</${Btn}>`}<span class="grow"></span><${Btn} onClick=${() => setModal(null)}>Cancel</${Btn}><${Btn} kind="primary" onClick=${save}>Save</${Btn}>`}>
-      <div class="form-grid"><${Field} label="Name" class="span2"><input type="text" value=${f.name} onInput=${(e) => setF({ ...f, name: e.target.value })} /></${Field}><${Field} label="Type"><select value=${f.kind} onChange=${(e) => setF({ ...f, kind: e.target.value })}><option value="bank">Bank account</option><option value="card">Credit card</option><option value="paypal">PayPal / payment provider</option><option value="cash">Cash</option><option value="other">Other</option></select></${Field}>
+      <div class="form-grid"><${Field} label="Name" class="span2"><input type="text" value=${f.name} onInput=${(e) => setF({ ...f, name: e.target.value })} /></${Field}><${Field} label="Type"><select value=${f.kind} onChange=${(e) => setF({ ...f, kind: e.target.value })}><option value="bank">Bank account</option><option value="card">Credit card</option><option value="paypal">PayPal / payment provider</option><option value="dla">Director's loan account</option><option value="cash">Cash</option><option value="other">Other</option></select></${Field}>
         <${Field} label="Opening balance"><${MoneyInput} allowNegative value=${f.opening_balance} onChange=${(v) => setF({ ...f, opening_balance: v ?? 0 })} /></${Field}></div></${Modal}>`}</div>`;
 }
 

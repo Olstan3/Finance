@@ -145,10 +145,10 @@ export function enrichItems(db, parsed, { accountId, settings = getSettings(db) 
     if (!raw.date && !flags.includes('no_date')) flags.push('no_date');
 
     const contact = findContact(db, contacts, raw.counterparty) || findContact(db, contacts, raw.description);
-    const sugg = suggestCategory({ description: raw.description, amount: raw.amount, counterparty: raw.counterparty }, { rules, history, validCategories });
+    const sugg = suggestCategory({ description: raw.description, amount: raw.amount, counterparty: raw.counterparty }, { rules, history, validCategories, entityType: settings.entityType });
     let category_id = sugg.category_id;
     // Documents addressed to you from a customer: your sales invoice is income
-    if (doc && direction === 'in') category_id = category_id && category_id !== 'drawings' ? category_id : 'se_turnover';
+    if (doc && direction === 'in') category_id = category_id && category_id !== 'drawings' ? category_id : (settings.entityType === 'company' ? 'co_other_income' : 'se_turnover');
     const confidence = Math.min(sugg.confidence, raw.confidence ?? 1);
 
     const vat = vatFor(raw, settings, direction);

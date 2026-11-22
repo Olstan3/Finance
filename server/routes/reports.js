@@ -34,7 +34,7 @@ export function vatWorksheet(v, settings) {
 }
 
 export default function reports(r, { db }) {
-  r.get('/reports/dashboard', (req, res) => res.json(dashboard(db, year(req))));
+  r.get('/reports/dashboard', (req, res) => { const co = getSettings(db).entityType === 'company'; res.json(co ? dashboard(db, undefined, req.query.period) : dashboard(db, year(req))); });
   r.get('/reports/pnl', (req, res) => res.json(profitAndLoss(db, range(req))));
   r.get('/reports/monthly', (req, res) => { const { start, end } = taxYearRange(year(req)); res.json(monthlySeries(db, req.query.from || start, req.query.to || end, { taxMonths: !req.query.from })); });
   r.get('/reports/accounts', (req, res) => res.json(accountBalances(db)));

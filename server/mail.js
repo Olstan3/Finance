@@ -21,7 +21,7 @@ export async function emailInvoice(db, id, { to, subject, message } = {}) {
   const settings = getSettings(db);
   const recipient = to || inv.contact?.email;
   if (!recipient || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipient)) { const e = new Error('Add a valid email address for this customer first.'); e.status = 400; throw e; }
-  const biz = settings.profile.tradingName || settings.profile.name || 'Ledgerline';
+  const biz = settings.entityType === 'company' ? (settings.company.name || 'Ledgerline') : (settings.profile.tradingName || settings.profile.name || 'Ledgerline');
   const pdf = await invoicePdf(inv, settings);
   const label = inv.kind === 'credit_note' ? 'Credit note' : 'Invoice';
   const info = await transport.sendMail({

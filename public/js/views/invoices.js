@@ -63,7 +63,7 @@ export function InvoiceEditor({ id }) {
   const settings = meta.settings;
   const isNew = !id;
   const vatOn = settings.vat.registered;
-  const incomeCats = meta.categories.filter((c) => c.kind === 'income' && ['self_employment', 'property'].includes(c.section));
+  const incomeCats = meta.categories.filter((c) => c.kind === 'income' && !['savings', 'dividends'].includes(c.section) && c.id !== 'co_interest');
   const contacts = useAsync(() => api.get('/api/contacts'), []);
   const existing = useAsync(() => (id ? api.get(`/api/invoices/${id}`) : Promise.resolve(null)), [id]);
   const next = useAsync(() => (isNew ? api.get('/api/invoices/next-number') : Promise.resolve(null)), []);
@@ -72,7 +72,7 @@ export function InvoiceEditor({ id }) {
   const [err, setErr] = useState({});
   const [saving, setSaving] = useState(false);
   const [newContact, setNewContact] = useState(false);
-  const blank = () => ({ contact_id: null, issue_date: isoToday(), due_date: addDays(isoToday(), settings.invoice.paymentTermsDays || 30), reference: '', notes: settings.invoice.notes || '', terms: '', category_id: 'se_turnover', lines: [{ description: '', quantity: 1, unit_price: 0, vat_code: vatOn ? 'S' : 'N' }], number: '' });
+  const blank = () => ({ contact_id: null, issue_date: isoToday(), due_date: addDays(isoToday(), settings.invoice.paymentTermsDays || 30), reference: '', notes: settings.invoice.notes || '', terms: '', category_id: meta.settings.entityType === 'company' ? 'co_subscriptions' : 'se_turnover', lines: [{ description: '', quantity: 1, unit_price: 0, vat_code: vatOn ? 'S' : 'N' }], number: '' });
   useEffect(() => { if (isNew && !f) setF(blank()); }, []);
   useEffect(() => { if (existing.data && !f) { const x = existing.data; setF({ ...x, lines: x.lines.map((l) => ({ ...l })) }); setDueTouched(true); } }, [existing.data]);
   if (!isNew && existing.error) return html`<${Loading} error=${existing.error} />`;

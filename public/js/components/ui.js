@@ -47,8 +47,15 @@ export function Field({ label, hint, error, children, class: c }) {
 /** Money input: shows pounds, reports pence. Keeps what you type until blur. */
 export function MoneyInput({ value, onChange, allowNegative = false, ...rest }) {
   const [text, setText] = useState(value == null ? '' : toInput(value));
-  const last = useRef(value);
-  useEffect(() => { if (value !== last.current) { last.current = value; setText(value == null ? '' : toInput(value)); } }, [value]);
+  const last = useRef(value);   // the last value this field reported to its parent
+  const prop = useRef(value);   // the last value the parent passed down
+  // Only a *change of the parent's value* can overwrite what the user typed. (Comparing against `last` alone
+  // races: an early keystroke updates `last` before the mount-time effect runs, which then wrongly clears the field.)
+  useEffect(() => {
+    if (value === prop.current) return;
+    prop.current = value;
+    if (value !== last.current) { last.current = value; setText(value == null ? '' : toInput(value)); }
+  }, [value]);
   const commit = (t) => {
     const p = parseMoney(t);
     const v = p == null ? null : allowNegative ? p : Math.abs(p);
@@ -58,7 +65,7 @@ export function MoneyInput({ value, onChange, allowNegative = false, ...rest }) 
   };
   return html`<div class="money"><span>£</span><input type="text" inputmode="decimal" value=${text} ...${rest}
     onInput=${(e) => { setText(e.target.value); const p = parseMoney(e.target.value); if (p != null) { last.current = allowNegative ? p : Math.abs(p); onChange(last.current); } else if (e.target.value === '') { last.current = null; onChange(null); } }}
-    onBlur=${() => { const v = commit(text); setText(v == null ? '' : toInput(v)); }} /></div>`;
+    onBlur=${(e) => { const v = commit(e.target.value); setText(v == null ? '' : toInput(v)); /* read the DOM value: the `text` state in this closure can be one keystroke behind when focus moves quickly */ }} /></div>`;
 }
 
 export function Modal({ title, onClose, children, footer, wide }) {
@@ -114,6 +121,10 @@ export function Loading({ error, retry }) {
 
 export function TaxYearSelect({ value, onChange, years }) {
   return html`<select aria-label="Tax year" value=${value} onChange=${(e) => onChange(e.target.value)} style="width:auto">${years.map((y) => html`<option value=${y.label}>${y.label.replace('-', '/')} tax year${y.status === 'provisional' ? ' (provisional)' : ''}</option>`)}</select>`;
+}
+
+export function PeriodSelect({ value, onChange, periods }) {
+  return html`<select aria-label="Accounting period" value=${value} onChange=${(e) => onChange(e.target.value)} style="width:auto">${[...periods].reverse().map((p) => html`<option value=${p.key}>${p.label}</option>`)}</select>`;
 }
 
 export const Pager = ({ total, offset, limit, onChange }) => total <= limit ? null : html`<div class="row" style="justify-content:flex-end;margin-top:10px">

@@ -9,7 +9,7 @@
 
 import { getSettings, getTaxInput } from '../db.js';
 import { ratesFor, THRESHOLDS } from './taxRates.js';
-import { taxYearEntries, totalsByTaxField, categoryMap } from './ledger.js';
+import { taxYearEntries, totalsByTaxField, categoryMap, isAccruals } from './ledger.js';
 import { calculateIncomeTax, calculateCgt } from './taxEngine.js';
 import { capitalAllowances } from './capitalAllowances.js';
 import { taxYearRange, filingDeadline, keepRecordsUntil, today, taxYearStartYear, fmtDate } from '../util/dates.js';
@@ -151,7 +151,7 @@ function computeProperty(totals, inputs, R) {
 export function buildTaxReturn(db, taxYear, opts = {}) {
   const settings = opts.settings || getSettings(db);
   const R = ratesFor(taxYear);
-  const basis = settings.accountingBasis === 'accruals' ? 'accruals' : 'cash';
+  const basis = isAccruals(settings) ? 'accruals' : 'cash';
   const inputs = { ...loadInputs(db, taxYear), ...(opts.inputsOverride || {}) };
   const cats = categoryMap(db);
 

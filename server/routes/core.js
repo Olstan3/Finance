@@ -4,12 +4,13 @@ import os from 'node:os';
 import { getSettings, saveSettings, audit, DATA_DIR } from '../db.js';
 import { ValidationError, listInvoices } from '../domain/invoices.js';
 import { TAX_YEAR_DATA, SUPPORTED_TAX_YEARS, VAT_RATES, THRESHOLDS } from '../domain/taxRates.js';
-import { SECTION_LABELS, BUILTIN_CATEGORIES } from '../domain/categories.js';
+import { SECTION_LABELS, BUILTIN_CATEGORIES, SECTIONS_BY_ENTITY, HIDDEN_FOR_COMPANY } from '../domain/categories.js';
 import { currentTaxYear, today } from '../util/dates.js';
 import { mailConfigured } from '../mail.js';
 import { accountBalances } from '../domain/reports.js';
 import { merchantKey } from '../domain/categorizer.js';
 import { seedDemo, resetAll, isEmpty } from '../seed.js';
+import { companyPeriods, currentPeriod, earliestActivityDate, ensureDirectorRecords } from '../domain/company.js';
 
 const bad = (msg, field) => { throw new ValidationError(msg, field); };
 const idOf = (req) => { const n = Number(req.params.id); if (!Number.isInteger(n)) { const e = new Error('Not found'); e.status = 404; throw e; } return n; };
@@ -27,6 +28,28 @@ export function validateSettings(p) {
     if (o.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email)) bad('That email address does not look right', 'email');
     if (pr.region !== undefined) { if (!['england', 'scotland'].includes(pr.region)) bad('Region must be England/Wales/NI or Scotland', 'region'); o.region = pr.region; }
     out.profile = o;
+  }
+  if (p.entityType !== undefined) { if (!['individual', 'company'].includes(p.entityType)) bad('Choose self-employed/landlord or limited company', 'entityType'); out.entityType = p.entityType; }
+  if (p.company) {
+    const c = p.company; const o = {};
+    for (const k of ['name', 'registeredOffice', 'postcode', 'sicCode', 'natureOfBusiness']) if (c[k] !== undefined) o[k] = str(c[k], 300);
+    if (c.number !== undefined) { const n = str(c.number).replace(/\s/g, '').toUpperCase(); if (n && !/^[A-Z0-9]{8}$/.test(n)) bad('A company number is 8 characters, e.g. 12345678 or SC123456', 'number'); o.number = n; }
+    if (c.utr !== undefined) { const u = str(c.utr).replace(/\s/g, ''); if (u && !/^\d{10}$/.test(u)) bad('A UTR is 10 digits', 'utr'); o.utr = u; }
+    if (c.incorporationDate !== undefined) { if (c.incorporationDate && !/^\d{4}-\d{2}-\d{2}$/.test(c.incorporationDate)) bad('Use a valid date', 'incorporationDate'); o.incorporationDate = c.incorporationDate || ''; }
+    if (c.firstPeriodEnd !== undefined) { if (c.firstPeriodEnd && !/^\d{4}-\d{2}-\d{2}$/.test(c.firstPeriodEnd)) bad('Use a valid date', 'firstPeriodEnd'); o.firstPeriodEnd = c.firstPeriodEnd || ''; }
+    if (c.yearEndMonth !== undefined) { const m = Number(c.yearEndMonth); if (!Number.isInteger(m) || m < 1 || m > 12) bad('Month must be 1–12', 'yearEndMonth'); o.yearEndMonth = m; }
+    if (c.yearEndDay !== undefined) { const d = Number(c.yearEndDay); if (!Number.isInteger(d) || d < 1 || d > 31) bad('Day must be 1–31', 'yearEndDay'); o.yearEndDay = d; }
+    if (c.shareCapital !== undefined) { const v = Number(c.shareCapital); if (!(v >= 0)) bad('Share capital must be zero or more (in pounds)', 'shareCapital'); o.shareCapital = v; }
+    if (c.associatedCompanies !== undefined) { const v = Number(c.associatedCompanies); if (!Number.isInteger(v) || v < 0 || v > 50) bad('Associated companies must be a whole number', 'associatedCompanies'); o.associatedCompanies = v; }
+    if (c.directors !== undefined) {
+      if (!Array.isArray(c.directors) || c.directors.length > 20) bad('Directors must be a list', 'directors');
+      o.directors = c.directors.map((d, i) => {
+        const name = str(d.name, 100); if (!name) bad('Every director needs a name', 'directors');
+        const shares = Number(d.shares ?? 0); if (!(shares >= 0)) bad('Shares must be zero or more', 'directors');
+        return { id: str(d.id, 40) || `dir_${Date.now().toString(36)}${i}`, name, shares, contact_id: d.contact_id || null, email: str(d.email, 200) };
+      });
+    }
+    out.company = o;
   }
   if (p.accountingBasis !== undefined) { if (!['cash', 'accruals'].includes(p.accountingBasis)) bad('Basis must be cash or accruals', 'accountingBasis'); out.accountingBasis = p.accountingBasis; }
   if (p.businessStartDate !== undefined) { if (p.businessStartDate && !/^\d{4}-\d{2}-\d{2}$/.test(p.businessStartDate)) bad('Use a valid date', 'businessStartDate'); out.businessStartDate = p.businessStartDate || ''; }
@@ -58,9 +81,10 @@ export default function core(r, { db }) {
     res.json({
       app: 'Ledgerline', version: '0.1.0', today: asOf, currentTaxYear: currentTaxYear(), settings,
       taxYears: SUPPORTED_TAX_YEARS.map((y) => ({ label: y, status: TAX_YEAR_DATA[y].status, notes: TAX_YEAR_DATA[y].notes || [] })),
-      categories: db.all('SELECT * FROM categories ORDER BY sort, name'), sections: SECTION_LABELS,
+      categories: db.all('SELECT * FROM categories ORDER BY sort, name').filter((c) => (SECTIONS_BY_ENTITY[settings.entityType] || SECTIONS_BY_ENTITY.individual).includes(c.section) && !(settings.entityType === 'company' && HIDDEN_FOR_COMPANY.has(c.id))), sections: SECTION_LABELS,
       accounts: accountBalances(db), vatCodes: Object.values(VAT_RATES), thresholds: THRESHOLDS,
       mailConfigured: mailConfigured(),
+      company: settings.entityType === 'company' ? { periods: companyPeriods(settings, { firstDate: earliestActivityDate(db) }), current: currentPeriod(settings, { firstDate: earliestActivityDate(db) }).key } : null,
       counts: {
         review: db.get("SELECT COUNT(*) AS n FROM transactions WHERE status = 'review'").n,
         uncategorised: db.get('SELECT COUNT(*) AS n FROM transactions WHERE category_id IS NULL').n,
@@ -72,7 +96,8 @@ export default function core(r, { db }) {
   r.get('/settings', (req, res) => res.json(getSettings(db)));
   r.put('/settings', (req, res) => {
     const patch = validateSettings(req.body || {});
-    const s = saveSettings(db, patch);
+    let s = saveSettings(db, patch);
+    if (s.entityType === 'company' && patch.company?.directors) s = ensureDirectorRecords(db);
     audit(db, 'settings', 'app', 'update', Object.keys(patch));
     res.json(s);
   });
@@ -81,7 +106,7 @@ export default function core(r, { db }) {
   r.get('/accounts', (req, res) => res.json(accountBalances(db)));
   r.post('/accounts', (req, res) => {
     const name = str(req.body.name, 80); if (!name) bad('Give the account a name', 'name');
-    const kind = ['bank', 'cash', 'card', 'paypal', 'other'].includes(req.body.kind) ? req.body.kind : 'bank';
+    const kind = ['bank', 'cash', 'card', 'paypal', 'dla', 'other'].includes(req.body.kind) ? req.body.kind : 'bank';
     const id = db.run('INSERT INTO accounts (name, kind, opening_balance) VALUES (?, ?, ?)', name, kind, Math.round(Number(req.body.opening_balance) || 0)).id;
     res.status(201).json(db.get('SELECT * FROM accounts WHERE id = ?', id));
   });
@@ -113,7 +138,7 @@ export default function core(r, { db }) {
     const email = str(b.email ?? cur.email, 200); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) bad('That email address does not look right', 'email');
     const terms = b.payment_terms_days ?? cur.payment_terms_days; const t = terms === '' || terms == null ? null : Number(terms);
     if (t != null && (!Number.isInteger(t) || t < 0 || t > 365)) bad('Payment terms are a number of days', 'payment_terms_days');
-    return [name, ['customer', 'supplier', 'both'].includes(b.kind ?? cur.kind) ? (b.kind ?? cur.kind) : 'customer', email || null, str(b.phone ?? cur.phone, 40) || null, str(b.address ?? cur.address, 400) || null, str(b.vat_number ?? cur.vat_number, 20) || null, str(b.notes ?? cur.notes, 1000) || null, t];
+    return [name, ['customer', 'supplier', 'both', 'director'].includes(b.kind ?? cur.kind) ? (b.kind ?? cur.kind) : 'customer', email || null, str(b.phone ?? cur.phone, 40) || null, str(b.address ?? cur.address, 400) || null, str(b.vat_number ?? cur.vat_number, 20) || null, str(b.notes ?? cur.notes, 1000) || null, t];
   };
   r.post('/contacts', (req, res) => {
     const f = contactFields(req.body);
@@ -179,7 +204,7 @@ export default function core(r, { db }) {
   });
 
   // ---- demo data / reset
-  r.post('/demo/load', (req, res) => res.status(201).json(seedDemo(db)));
+  r.post('/demo/load', (req, res) => res.status(201).json(seedDemo(db, req.body?.type)));
   r.post('/admin/reset', (req, res) => {
     if (req.body?.confirm !== 'DELETE') bad('Type DELETE to confirm.');
     resetAll(db); audit(db, 'admin', 'all', 'reset');

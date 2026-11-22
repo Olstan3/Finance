@@ -108,10 +108,11 @@ export default function tax(r, { db }) {
     if (!Object.keys(POOLS).includes(b.pool)) bad('Choose the type of asset', 'pool');
     const pct = b.business_pct == null ? 100 : Number(b.business_pct); if (!Number.isInteger(pct) || pct < 1 || pct > 100) bad('Business use is 1–100%', 'business_pct');
     if (b.disposal_date && !isISO(b.disposal_date)) bad('Disposal date must be a valid date', 'disposal_date');
-    return [name, b.purchase_date, int(b.cost, 'cost', { min: 1 }), b.pool, pct, b.disposal_date || null, b.disposal_date ? int(b.disposal_proceeds || 0, 'proceeds') : null, String(b.notes || '').slice(0, 300) || null, b.txn_id || null];
+    const life = b.life_years == null ? 3 : Number(b.life_years); if (!Number.isInteger(life) || life < 1 || life > 25) bad('Useful life is 1–25 years', 'life_years');
+    return [name, b.purchase_date, int(b.cost, 'cost', { min: 1 }), b.pool, pct, b.disposal_date || null, b.disposal_date ? int(b.disposal_proceeds || 0, 'proceeds') : null, String(b.notes || '').slice(0, 300) || null, b.txn_id || null, life];
   };
-  r.post('/assets', (req, res) => { const id = db.run('INSERT INTO assets (name, purchase_date, cost, pool, business_pct, disposal_date, disposal_proceeds, notes, txn_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', ...assetFields(req.body || {})).id; res.status(201).json(db.get('SELECT * FROM assets WHERE id = ?', id)); });
-  r.put('/assets/:id', (req, res) => { const id = idOf(req); db.run('UPDATE assets SET name = ?, purchase_date = ?, cost = ?, pool = ?, business_pct = ?, disposal_date = ?, disposal_proceeds = ?, notes = ?, txn_id = ? WHERE id = ?', ...assetFields(req.body || {}), id); res.json(db.get('SELECT * FROM assets WHERE id = ?', id)); });
+  r.post('/assets', (req, res) => { const id = db.run('INSERT INTO assets (name, purchase_date, cost, pool, business_pct, disposal_date, disposal_proceeds, notes, txn_id, life_years) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ...assetFields(req.body || {})).id; res.status(201).json(db.get('SELECT * FROM assets WHERE id = ?', id)); });
+  r.put('/assets/:id', (req, res) => { const id = idOf(req); db.run('UPDATE assets SET name = ?, purchase_date = ?, cost = ?, pool = ?, business_pct = ?, disposal_date = ?, disposal_proceeds = ?, notes = ?, txn_id = ?, life_years = ? WHERE id = ?', ...assetFields(req.body || {}), id); res.json(db.get('SELECT * FROM assets WHERE id = ?', id)); });
   r.delete('/assets/:id', (req, res) => { db.run('DELETE FROM assets WHERE id = ?', idOf(req)); res.json({ deleted: true }); });
 
   // ---- mileage

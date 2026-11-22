@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { html, Btn, Badge, Notice, Empty, Loading, useAsync, Tabs, TaxYearSelect, Modal, Field } from '../components/ui.js';
 import { PageHead } from '../components/shared.js';
 import { api, qs } from '../api.js';
-import { useStore, toast, toastError, setTaxYear } from '../store.js';
+import { useStore, toast, toastError, setTaxYear, selection } from '../store.js';
 import { gbp, fmtDate } from '../util.js';
 import { go } from '../main.js';
 
@@ -86,11 +86,14 @@ function Quarterly({ year }) {
 
 export default function Reports({ query }) {
   const { meta, taxYear } = useStore();
-  const year = taxYear || meta.currentTaxYear;
-  const tab = query.tab || 'pnl';
+  const isCo = meta.settings.entityType === 'company';
+  const year = selection(meta, taxYear);
+  const tab = query.tab || (isCo ? 'vat' : 'pnl');
+  const tabs = isCo ? [{ id: 'vat', label: 'VAT return' }, { id: 'aging', label: 'Who owes you' }] : [{ id: 'pnl', label: 'Profit & loss' }, { id: 'vat', label: 'VAT return' }, { id: 'aging', label: 'Who owes you' }, { id: 'quarterly', label: 'Quarterly updates (MTD)' }];
   return html`<div>
-    <${PageHead} title="Reports"><${TaxYearSelect} value=${year} years=${meta.taxYears} onChange=${(y) => setTaxYear(y)} /></${PageHead}>
-    <${Tabs} value=${tab} onChange=${(t) => go(`/reports?tab=${t}`)} tabs=${[{ id: 'pnl', label: 'Profit & loss' }, { id: 'vat', label: 'VAT return' }, { id: 'aging', label: 'Who owes you' }, { id: 'quarterly', label: 'Quarterly updates (MTD)' }]} />
-    ${tab === 'pnl' && html`<${PnL} year=${year} />`}${tab === 'vat' && html`<${Vat} />`}${tab === 'aging' && html`<${Aging} />`}${tab === 'quarterly' && html`<${Quarterly} year=${year} />`}
+    <${PageHead} title="Reports">${!isCo && html`<${TaxYearSelect} value=${year} years=${meta.taxYears} onChange=${(y) => setTaxYear(y)} />`}</${PageHead}>
+    ${isCo && html`<${Notice}>Your company's profit and loss account and balance sheet are under <a href="#/tax?tab=accounts">Company tax → Accounts</a>.</${Notice}>`}
+    <${Tabs} value=${tab} onChange=${(t) => go(`/reports?tab=${t}`)} tabs=${tabs} />
+    ${tab === 'pnl' && !isCo && html`<${PnL} year=${year} />`}${tab === 'vat' && html`<${Vat} />`}${tab === 'aging' && html`<${Aging} />`}${tab === 'quarterly' && !isCo && html`<${Quarterly} year=${year} />`}
   </div>`;
 }

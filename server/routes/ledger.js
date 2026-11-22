@@ -16,6 +16,11 @@ const csvCell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
+/** Names that mean "us" on a document (decides whether an invoice is ours or a supplier's). */
+const identityFor = (settings) => settings.entityType === 'company'
+  ? { ...settings.profile, name: settings.company.name, tradingName: '', aliases: [settings.profile.aliases, ...settings.company.directors.map((d) => d.name)].filter(Boolean).join(', ') }
+  : settings.profile;
+
 export default function ledger(r, { db }) {
   // ---------------------------------------------------------------- transactions
   r.get('/transactions', (req, res) => res.json(listTransactions(db, req.query)));
@@ -64,7 +69,7 @@ export default function ledger(r, { db }) {
     if (!buffer.length) bad('That file is empty.');
     const settings = getSettings(db);
     const accountId = req.query.accountId ? Number(req.query.accountId) : null;
-    const parsed = await parseUpload({ filename, buffer }, { profile: settings.profile, hints: buildHints(db) });
+    const parsed = await parseUpload({ filename, buffer }, { profile: identityFor(settings), hints: buildHints(db) });
     res.status(201).json(await stage(parsed, { filename, accountId, buffer, kind: parsed.kind }));
   });
   r.post('/import/text', async (req, res) => {
@@ -72,7 +77,7 @@ export default function ledger(r, { db }) {
     if (text.trim().length < 5) bad('Paste some text first.');
     if (text.length > 2_000_000) bad('That is too much text to import in one go.');
     const settings = getSettings(db);
-    const parsed = await parseUpload({ filename: 'pasted.txt', buffer: Buffer.from(text, 'utf8') }, { profile: settings.profile, hints: buildHints(db) });
+    const parsed = await parseUpload({ filename: 'pasted.txt', buffer: Buffer.from(text, 'utf8') }, { profile: identityFor(settings), hints: buildHints(db) });
     res.status(201).json(await stage(parsed, { filename: 'Pasted text', accountId: req.body.accountId ? Number(req.body.accountId) : null, buffer: Buffer.from(text, 'utf8'), kind: 'text', text }));
   });
   r.get('/import/batches', (req, res) => res.json(listBatches(db)));

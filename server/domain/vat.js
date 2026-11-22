@@ -40,6 +40,8 @@ export function vatEntries(db, from, to, settings = getSettings(db)) {
     const neg = (cat.kind === 'income' ? t.amount < 0 : t.amount > 0); // refund / credit
     const pct = cat.kind === 'income' ? 1 : (t.business_pct ?? 100) / 100;
     const row = { id: t.id, date: t.date, description: t.description, vatCode: t.vat_code, net: pctOf(net, pct) * (neg ? -1 : 1), vat: pctOf(vat, pct) * (neg ? -1 : 1), source: 'txn' };
+    // Reverse charge: UK VAT is accounted for on the value of an overseas service, in Box 1 and (as input tax) Box 4.
+    if (t.vat_code === 'RC' && cat.kind !== 'income') row.reverseCharge = pctOf(Math.abs(t.amount) * (neg ? -1 : 1) * (pct), 0.2);
     (cat.kind === 'income' ? sales : purchases).push(row);
   }
 
@@ -60,14 +62,17 @@ export function vatEntries(db, from, to, settings = getSettings(db)) {
 export function vatReturn(db, from, to, settings = getSettings(db)) {
   const { sales, purchases, scheme } = vatEntries(db, from, to, settings);
   const sum = (arr, k) => arr.reduce((a, r) => a + r[k], 0);
-  const box1 = sum(sales, 'vat');
+  const reverseCharged = purchases.filter((r) => r.reverseCharge != null);
+  const rcVat = reverseCharged.reduce((a, r) => a + r.reverseCharge, 0);
+  const rcNet = reverseCharged.reduce((a, r) => a + r.net, 0);
+  const box1 = sum(sales, 'vat') + rcVat;
   const box2 = 0; // acquisitions from EU member states (Northern Ireland only)
   const box3 = box1 + box2;
-  const box4 = sum(purchases, 'vat');
+  const box4 = sum(purchases, 'vat') + rcVat;
   const box5 = box3 - box4;
   const boxes = {
     box1, box2, box3, box4, box5,
-    box6: floorPounds(sum(sales, 'net')),
+    box6: floorPounds(sum(sales, 'net') + rcNet), // reverse-charge purchases are also reported as outputs in Box 6
     box7: floorPounds(sum(purchases, 'net')),
     box8: 0, box9: 0,
   };
@@ -108,7 +113,7 @@ export function vatThresholdCheck(db, asOf = today()) {
   let turnover = 0;
   for (const t of db.all("SELECT * FROM transactions WHERE date >= ? AND date <= ? AND status != 'ignored' AND amount > 0", from, asOf)) {
     const c = cats[t.category_id];
-    if (c && c.kind === 'income' && c.section === 'self_employment') turnover += t.amount - Math.abs(t.vat_amount || 0);
+    if (c && c.kind === 'income' && ['self_employment', 'company'].includes(c.section)) turnover += t.amount - Math.abs(t.vat_amount || 0);
   }
   // Accruals users also have issued invoices (unpaid) that count; include unpaid issued ones not yet linked.
   const unpaid = db.all(

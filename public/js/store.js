@@ -15,7 +15,16 @@ export function useStore() {
 
 const YEAR_KEY = 'ledgerline-tax-year';
 function storedYear(meta) {
-  try { const y = localStorage.getItem(YEAR_KEY); return y && meta.taxYears.some((t) => t.label === y) ? y : null; } catch { return null; }
+  try {
+    const y = localStorage.getItem(YEAR_KEY);
+    return y && (meta.taxYears.some((t) => t.label === y) || meta.company?.periods?.some((p) => p.key === y)) ? y : null;
+  } catch { return null; }
+}
+
+/** What's selected, validated for the current business type: a tax year for individuals, an accounting-period key for companies. */
+export function selection(meta, selected) {
+  if (meta.settings.entityType === 'company') return meta.company?.periods?.some((p) => p.key === selected) ? selected : meta.company?.current;
+  return meta.taxYears.some((t) => t.label === selected) ? selected : meta.currentTaxYear;
 }
 /** The tax year being viewed survives reloads (kept in localStorage; the app works fine without it). */
 export function setTaxYear(y) {

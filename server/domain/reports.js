@@ -1,11 +1,12 @@
 import { getSettings, getTaxInput } from '../db.js';
-import { loadEntries, taxYearEntries, totalsByTaxField, categoryMap } from './ledger.js';
+import { loadEntries, taxYearEntries, totalsByTaxField, categoryMap, isAccruals } from './ledger.js';
 import { buildTaxReturn } from './taxReturn.js';
 import { receivablesAging, listInvoices } from './invoices.js';
 import { listTemplates, previewDates } from './recurring.js';
 import { vatThresholdCheck, vatPeriods, vatDueDate } from './vat.js';
 import { taxYearRange, currentTaxYear, previousTaxYear, today, quarterlyPeriods, filingDeadline, taxYearStartYear, addDays, fmtDate, MONTHS } from '../util/dates.js';
 import { THRESHOLDS } from './taxRates.js';
+import { companyOverview, companyDeadlines, companyPeriods, currentPeriod, findPeriod, earliestActivityDate, companyConfigured } from './company.js';
 
 /** Profit & loss grouped by category for a tax year or an arbitrary range. */
 export function profitAndLoss(db, { taxYear, from, to }) {
@@ -32,7 +33,7 @@ export function profitAndLoss(db, { taxYear, from, to }) {
   const expenses = group('expense');
   const capital = group('capital');
   const totalIncome = income.reduce((a, r) => a + r.amount, 0);
-  const cashBasis = settings.accountingBasis !== 'accruals';
+  const cashBasis = !isAccruals(settings);
   const totalExpenses = expenses.reduce((a, r) => a + r.amount, 0) + (cashBasis ? capital.reduce((a, r) => a + r.amount, 0) : 0);
   return {
     from, to, basis: settings.accountingBasis, income, expenses, capital, totalIncome, totalExpenses, netProfit: totalIncome - totalExpenses,
@@ -47,7 +48,7 @@ export function profitAndLoss(db, { taxYear, from, to }) {
 export function monthlySeries(db, from, to, { taxMonths = false } = {}) {
   const settings = getSettings(db);
   const { entries } = loadEntries(db, from, to, { settings });
-  const cashBasis = settings.accountingBasis !== 'accruals';
+  const cashBasis = !isAccruals(settings);
   const bucketOf = (date) => {
     let [y, m, d] = date.split('-').map(Number);
     if (taxMonths && d < 6) { m -= 1; if (m === 0) { m = 12; y -= 1; } }
@@ -78,8 +79,9 @@ export function accountBalances(db) {
 }
 
 /** Everything the dashboard needs in one call. */
-export function dashboard(db, taxYear = currentTaxYear()) {
+export function dashboard(db, taxYear = currentTaxYear(), periodKey) {
   const settings = getSettings(db);
+  if (companyConfigured(settings)) return companyDashboard(db, settings, periodKey);
   const asOf = today();
   const { start, end } = taxYearRange(taxYear);
   const pnl = profitAndLoss(db, { taxYear });
@@ -156,7 +158,7 @@ function sectionTotals(entries, basis) {
 export function quarterlyUpdates(db, taxYear, scheme) {
   const settings = getSettings(db);
   const sch = scheme || settings.mtd.quarterlyScheme || 'standard';
-  const basis = settings.accountingBasis === 'accruals' ? 'accruals' : 'cash';
+  const basis = isAccruals(settings) ? 'accruals' : 'cash';
   const { start } = taxYearRange(taxYear);
   const submitted = getTaxInput(db, taxYear, 'quarterlySubmitted', {}) || {};
   const asOf = today();
@@ -173,3 +175,35 @@ export function quarterlyUpdates(db, taxYear, scheme) {
 }
 
 export { totalsByTaxField, vatDueDate, THRESHOLDS };
+
+
+/** Dashboard for a limited company: the current accounting period, Corporation Tax estimate and directors' loan exposure. */
+function companyDashboard(db, settings, periodKey) {
+  const asOf = today();
+  const first = earliestActivityDate(db);
+  const period = periodKey && /^\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/.test(periodKey) ? findPeriod(settings, periodKey, { firstDate: first }) : currentPeriod(settings, { firstDate: first, asOf });
+  const ov = companyOverview(db, period.key);
+  const aging = receivablesAging(db, asOf);
+  const overdue = listInvoices(db, { status: 'overdue' }, asOf);
+  const periods = companyPeriods(settings, { firstDate: first, asOf });
+  const prev = periods.length > 1 ? periods[periods.length - 2] : null;
+
+  const deadlines = [...companyDeadlines(settings, period, asOf), ...(prev ? companyDeadlines(settings, prev, asOf) : [])];
+  if (settings.vat.registered) for (const p of vatPeriods(settings.vat.stagger || 1, asOf, 2)) deadlines.push({ date: p.due, title: `VAT return for the period ending ${fmtDate(p.end)}`, detail: `Covers ${fmtDate(p.start)} to ${fmtDate(p.end)}`, kind: 'vat', daysAway: Math.round((Date.parse(p.due) - Date.parse(asOf)) / 86400000) });
+  const seen = new Set();
+  const upcoming = deadlines.filter((d) => d.date >= addDays(asOf, -7)).sort((a, b) => (a.date < b.date ? -1 : 1)).filter((d) => { const k = d.title; if (seen.has(k)) return false; seen.add(k); return true; });
+
+  return {
+    entity: 'company', taxYear: period.key, asOf, period, periods, label: period.label,
+    totals: { income: ov.pnl.turnover + ov.pnl.interest, expenses: ov.pnl.totalExpenses, profit: ov.pnl.profitBeforeTax },
+    estimate: { totalLiability: ov.ct.tax, incomeTax: ov.ct.tax, class4: 0, balance: ov.ct.tax, rateStatus: 'confirmed', band: ov.ct.rows[0]?.charge.band },
+    accounts: accountBalances(db).filter((a) => a.kind !== 'dla'),
+    receivables: { total: aging.total, buckets: aging.buckets, overdueCount: overdue.length, overdueTotal: overdue.reduce((a, i) => a + i.outstanding, 0), drafts: listInvoices(db, { status: 'draft' }, asOf).length },
+    attention: { uncategorised: ov.pnl.uncategorised, needsReview: ov.pnl.needsReview, warnings: ov.warnings.filter((w) => w.level !== 'info').length },
+    vatThreshold: settings.vat.registered ? null : vatThresholdCheck(db, asOf),
+    deadlines: upcoming.slice(0, 6),
+    upcomingRecurring: listTemplates(db).filter((t) => t.active).flatMap((t) => previewDates(t, 1).map((d) => ({ id: t.id, name: t.name, contact: t.contact_name, date: d }))).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5),
+    monthly: monthlySeries(db, period.start, period.end),
+    company: { loansOwed: ov.loans.total, s455: ov.loans.s455, reserves: ov.reserves.available, balanced: ov.balanceSheet.balanced, cash: ov.balanceSheet.cash },
+  };
+}

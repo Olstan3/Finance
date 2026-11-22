@@ -165,6 +165,27 @@ export const SIMPLIFIED = {
   ],
 };
 
+// ---- Corporation Tax (unchanged for the financial years 2023-2026) ----
+export const CORPORATION_TAX = {
+  status: 'confirmed',
+  smallProfitsRate: 0.19,
+  mainRate: 0.25,
+  lowerLimit: 50000,      // divided by (1 + associated companies) and scaled for short periods
+  upperLimit: 250000,
+  marginalFraction: 3 / 200,
+  payDays: { months: 9, plusDays: 1 },   // CT is due 9 months and 1 day after the period ends
+  returnMonths: 12,                      // CT600 due 12 months after the period ends
+  accountsMonths: 9,                     // Companies House accounts for a private company
+};
+
+// Section 455 charge on loans to participators (e.g. overdrawn director's loan accounts):
+// the rate is set by the date the loan was made. 35.75% from 6 April 2026, 33.75% before.
+export const S455_RATES = [
+  { from: '2026-04-06', rate: 0.3575 },
+  { from: '0000-01-01', rate: 0.3375 },
+];
+export const S455_LATE_MONTHS = 9; // repay within 9 months + 1 day of period end to avoid the charge
+
 export const VAT_RATES = {
   S: { code: 'S', label: 'Standard 20%', rate: 0.2 },
   R: { code: 'R', label: 'Reduced 5%', rate: 0.05 },
@@ -172,6 +193,12 @@ export const VAT_RATES = {
   E: { code: 'E', label: 'Exempt', rate: 0 },
   O: { code: 'O', label: 'Outside scope', rate: 0 },
   N: { code: 'N', label: 'No VAT', rate: 0 },
+  // Overseas B2B: a service supplied to a customer abroad (e.g. an ad network). Outside UK VAT, but the value
+  // is still reported in Box 6.
+  OB: { code: 'OB', label: 'Sale to overseas business (outside UK VAT, in Box 6)', rate: 0 },
+  // Reverse charge: services bought from an overseas supplier (hosting, domains, SaaS). You account for UK VAT
+  // yourself – Boxes 1 and 4 (net nil) – and the value goes in Boxes 6 and 7.
+  RC: { code: 'RC', label: 'Reverse charge – overseas supplier (Boxes 1, 4, 6, 7)', rate: 0 },
 };
 
 export const THRESHOLDS = {

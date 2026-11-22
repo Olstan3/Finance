@@ -103,9 +103,7 @@ function validateInvoice(data) {
 }
 
 export function defaultIncomeCategory(db) {
-  const s = getSettings(db);
-  void s;
-  return 'se_turnover';
+  return getSettings(db).entityType === 'company' ? 'co_subscriptions' : 'se_turnover';
 }
 
 export function createInvoice(db, data) {
@@ -221,7 +219,7 @@ export function linkTransactionToInvoice(db, txnId, invoiceId) {
   const vat = Math.round((Math.abs(t.amount) * Math.abs(inv.totals.vat)) / Math.abs(gross));
   db.run(
     `UPDATE transactions SET invoice_id = ?, contact_id = ?, category_id = ?, vat_code = ?, vat_amount = ?, status = 'confirmed' WHERE id = ?`,
-    invoiceId, inv.contact_id, inv.category_id || 'se_turnover', dominantVatCode(inv.lines), vat, txnId,
+    invoiceId, inv.contact_id, inv.category_id || defaultIncomeCategory(db), dominantVatCode(inv.lines), vat, txnId,
   );
   return getInvoice(db, invoiceId);
 }

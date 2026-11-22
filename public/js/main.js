@@ -12,6 +12,7 @@ import Recurring from './views/recurring.js';
 import Contacts from './views/contacts.js';
 import Reports from './views/reports.js';
 import Tax from './views/tax.js';
+import Company from './views/company.js';
 import Settings from './views/settings.js';
 
 // ---- hash router: "#/invoices/12/edit?x=1"
@@ -59,6 +60,7 @@ function Shell() {
   if (!meta) return html`<p class="boot">Loading Ledgerline…</p>`;
   const [section = 'dashboard', a, b] = route.segments;
   const counts = meta.counts;
+  const isCo = meta.settings.entityType === 'company';
   let view;
   switch (section) {
     case 'dashboard': view = html`<${Dashboard} />`; break;
@@ -68,7 +70,7 @@ function Shell() {
     case 'recurring': view = html`<${Recurring} />`; break;
     case 'contacts': view = html`<${Contacts} />`; break;
     case 'reports': view = html`<${Reports} query=${route.query} />`; break;
-    case 'tax': view = html`<${Tax} query=${route.query} />`; break;
+    case 'tax': view = isCo ? html`<${Company} query=${route.query} />` : html`<${Tax} query=${route.query} />`; break;
     case 'settings': view = html`<${Settings} query=${route.query} />`; break;
     default: view = html`<div class="card"><h2>Page not found</h2><p><a href="#/dashboard">Back to the dashboard</a></p></div>`;
   }
@@ -77,7 +79,7 @@ function Shell() {
     <div class="topbar"><button class="btn ghost" aria-label="Open menu" onClick=${() => setOpen(true)}><${Icon} name="menu" /></button><strong>Ledgerline</strong></div>
     <aside class=${cls('side', open && 'open')} aria-label="Main">
       <div class="brand"><span class="brand-mark"><svg viewBox="0 0 32 32" width="18" height="18"><path d="M8 21h16M8 15h10M8 9h6" stroke="var(--accent-ink)" stroke-width="3" stroke-linecap="round" fill="none"/></svg></span>Ledgerline</div>
-      <nav class="nav">${NAV.map(([id, label, icon]) => id === 'sep' ? html`<div class="nav-sep" />` : html`<a href=${`#/${id}`} aria-current=${section === id ? 'page' : undefined}><${Icon} name=${icon} />${label}${badge[id] ? html`<span class=${cls('count', id === 'invoices' && 'bad')}>${badge[id]}</span>` : ''}</a>`)}</nav>
+      <nav class="nav">${NAV.map(([id, label0, icon]) => { const label = id === 'tax' && isCo ? 'Company tax' : id === 'contacts' && isCo ? 'Customers & suppliers' : label0; return id === 'sep' ? html`<div class="nav-sep" />` : html`<a href=${`#/${id}`} aria-current=${section === id ? 'page' : undefined}><${Icon} name=${icon} />${label}${badge[id] ? html`<span class=${cls('count', id === 'invoices' && 'bad')}>${badge[id]}</span>` : ''}</a>`; })}</nav>
       <div class="side-foot"><button class="btn small ghost" onClick=${toggleTheme}>Light / dark</button><div style="margin-top:6px">Your data stays on this computer.</div></div>
     </aside>
     ${open && html`<div class="overlay" style="z-index:35;background:rgba(0,0,0,.3)" onClick=${() => setOpen(false)}></div>`}

@@ -1,8 +1,8 @@
 # Ledgerline
 
-Self-hosted accounts and Self Assessment for UK sole traders and landlords. It reads your bank statements, invoices and receipts, sorts income and expenses into the right HMRC boxes, issues invoices (including recurring ones), and prepares the figures for your tax return – all stored on **your own computer**.
+Self-hosted accounts and tax preparation for UK **sole traders, landlords and small limited companies**. It reads your bank statements, invoices and receipts, sorts income and expenses into the right HMRC boxes, issues invoices (including recurring ones), and prepares the figures for your tax return – Self Assessment for individuals, or draft accounts, a Corporation Tax computation and CT600 figures for a company – all stored on **your own computer**.
 
-> **Read this first.** Ledgerline *prepares* your return. It does **not** submit anything to HMRC and it is not tax advice. You (or your accountant) enter the figures in HMRC's online service or approved software. See [What it doesn't do](#what-it-doesnt-do) and [How far to trust the numbers](#how-far-to-trust-the-numbers).
+> **Read this first.** Ledgerline *prepares* your return. It does **not** submit anything to HMRC and it is not tax advice. Individuals enter the figures in HMRC's online service or approved software. **Companies can't even do that**: HMRC's free company-return service closed on 31 March 2026, so a CT600 must be filed with HMRC-recognised commercial software (with iXBRL accounts and computations) or by an accountant – Ledgerline gives them everything they need, including a trial balance. See [What it doesn't do](#what-it-doesnt-do) and [How far to trust the numbers](#how-far-to-trust-the-numbers).
 
 ## Quick start
 
@@ -13,14 +13,15 @@ npm install
 npm start            # then open http://localhost:3000
 ```
 
-Want to look around first? `npm run demo` loads a made-up freelance designer with a rental flat (two tax years of transactions, invoices, a recurring retainer, mileage, a share sale) and starts the app. Settings → Security & data → *Start again* wipes it.
+Want to look around first? On the dashboard choose *Explore with demo data* (freelancer or app company), or `npm run demo` for the freelancer: a made-up freelance designer with a rental flat (two tax years of transactions, invoices, a recurring retainer, mileage, a share sale) and starts the app. Settings → Security & data → *Start again* wipes it.
 
 | Command | What it does |
 |---|---|
 | `npm start` | Run the app (data in `./data`) |
-| `npm test` | 99 unit/integration tests (tax engine, importers, invoices, VAT, API) |
-| `npm run e2e` | Browser test of the whole workflow (needs Playwright: `npm i -D playwright && npx playwright install chromium`) |
-| `npm run seed` | Load demo data into an empty database |
+| `npm test` | 126 unit/integration tests (tax engine, company accounts, importers, invoices, VAT, API) |
+| `npm run e2e` | Browser test of the self-employed workflow (needs Playwright: `npm i -D playwright && npx playwright install chromium`) |
+| `npm run e2e:company` | Browser test of the limited-company workflow |
+| `npm run seed` / `npm run seed -- company` | Load demo data (a freelancer, or an app company) into an empty database |
 
 ## What it does
 
@@ -51,7 +52,19 @@ Then, before anything is recorded:
 
 **Recurring invoices** – weekly/monthly/quarterly/yearly, "every N", end date or run count, and descriptions like *"Retainer for {month} {year}"*. Created as drafts, auto-issued, or auto-emailed. Missed periods are caught up with their proper dates and never duplicated; month-end schedules don't drift (31 Jan → 28 Feb → 31 Mar).
 
-**Tax** (tax years 2023/24 – 2026/27, England/Wales/NI and Scotland)
+**Limited company mode** – choose "Limited company" on the dashboard or in Settings. Built for a company like two directors taking no salary, earning from subscriptions and ad/app-store income, with costs such as hosting and domains:
+
+- **Accruals accounting** (companies can't use the cash basis). An annual plan paid up front, or a multi-year domain, can be marked as *covering a period* and is **spread by the day**, with deferred income / prepayments on the balance sheet.
+- **Profit & loss account and balance sheet** (micro-entity layout) built from independent sources – bank balances, unpaid invoices, equipment, director's loans, VAT and tax owed – and **compared with the profit**. A gap is shown as an "unreconciled difference" with likely causes, never plugged.
+- **Corporation Tax computation**: add back depreciation and non-deductible items, Annual Investment Allowance, losses brought forward, 19% / 25% with **marginal relief**, associated companies, short and over-12-month periods (split into two returns). **CT600 figures** with the verified box numbers, plus **CT600A** for director loans.
+- **Directors**: each gets a director's-loan account. Overdrawn balances show the **s455 charge** (35.75% for loans made on/after 6 April 2026, 33.75% before) and the date to repay by.
+- **Dividends** split by shareholding, blocked (unless you insist) when there isn't enough distributable profit, with **board minutes and dividend vouchers** to print, and a personal-tax estimate per director – with no salary, the Personal Allowance plus the £500 dividend allowance means about £13,070 each is tax-free.
+- **Equipment** categorised as such becomes an asset, depreciated in the accounts and relieved with the AIA for tax.
+- **VAT** codes for the digital-business cases: *Sale to overseas business* (outside UK VAT but in Box 6 – ad networks) and *Reverse charge* (hosting/domains/software from overseas suppliers: Boxes 1, 4, 6, 7).
+- **Trial balance CSV**, draft accounts PDF, deadlines (Corporation Tax 9 months + 1 day, CT600 12 months, Companies House 9 months).
+- Merchant recognition for AdMob/AdSense, App Store and Google Play payouts, Stripe/Paddle, AWS/Cloudflare/DigitalOcean, Namecheap/GoDaddy, GitHub and similar.
+
+**Tax** (individuals; tax years 2023/24 – 2026/27, England/Wales/NI and Scotland)
 
 - Worksheets mirroring **SA100, SA102, SA103, SA105, SA108** plus an SA110-style calculation, as screen and PDF, with **drill-down** from any figure to the transactions behind it.
 - Income Tax (Personal Allowance taper, savings starting rate, Personal Savings Allowance, dividend allowance, Scottish bands, Gift Aid/pension band extension, Marriage Allowance), Class 2 & 4 NIC, student loans, High Income Child Benefit Charge, residential finance-cost relief (20%), trading and property allowances (auto-picked when they beat actual expenses), loss carry-forward, Capital Gains Tax, payments on account and the 31 January cash needed.
@@ -63,8 +76,9 @@ Then, before anything is recorded:
 
 Be clear-eyed about these before relying on it:
 
-- **It does not file.** There is no HMRC API integration (that needs HMRC developer registration and production approval). You copy the figures across.
-- **Individuals only.** No limited-company accounts or CT600, partnerships (SA104), foreign income (SA106), trusts (SA107) or residence/remittance (SA109).
+- **It does not file.** There is no HMRC API integration (that needs HMRC developer registration and production approval). Individuals copy the figures across. **A company cannot do even that**: the CT600 must go through HMRC-recognised commercial software with accounts and computations in **iXBRL**, which Ledgerline does not produce. Use the trial balance and draft pack with an accountant or filing software. Accounts for Companies House and the confirmation statement are also separate filings.
+- **Partnerships (SA104), foreign income (SA106), trusts (SA107), residence/remittance (SA109)** are not covered, nor group companies, R&D relief (worth asking an accountant about if you develop software), or payroll (no PAYE/RTI – not needed while nobody is paid).
+- **Company-mode gaps:** unpaid supplier bills at the year end (creditors) and other accruals aren't tracked – expenses count when paid, plus spreading; a first accounting period is assumed to start at incorporation (trading may start later); platform payouts are recorded as received (if Apple/Google take commission before paying you, record the gross and the fee, or just the net – be consistent); amounts in dollars/euros are flagged, not converted – enter the sterling amount that hit the bank.
 - **No flat-rate VAT scheme**, no foreign-currency conversion (foreign amounts are flagged, not converted).
 - Not handled: sideways trading-loss relief, Business Asset Disposal Relief, share pooling/matching, married-couple/blind allowances, Class 3, non-standard coding-out. Notes in the app say so where relevant.
 - Under the accruals basis, purchases are recognised when paid (only sales invoices are accrued).
@@ -76,7 +90,8 @@ Be clear-eyed about these before relying on it:
 
 **Rates and box numbers were cross-checked from search results, because gov.uk could not be reached from the environment this was built in.** Concretely:
 
-- 2023/24–2025/26 rates are standard published figures. **2026/27 is marked "provisional"** in the app and in the PDF – in particular the Scottish bands (from the Scottish Budget 2026–27), Class 2 weekly rate / small-profits threshold, student-loan thresholds and the main-pool writing-down rate (14%). Check them against HMRC before filing.
+- **Company figures:** Corporation Tax 19% / 25% with the 3/200 marginal-relief fraction and £50,000 / £250,000 limits (unchanged for 2026), the s455 rate change to 35.75% from 6 April 2026, the closure of HMRC's free CT600 service on 31 March 2026, and CT600 boxes **145, 155, 165, 475 and 510** were confirmed from search results; box 160 is inferred (†), and the other CT600 rows are listed by name without a box number. How the limits are shared between associated companies and scaled for short periods follows standard HMRC practice but wasn't independently re-verified. The micro-entity accounts wording is **draft** – have your accountant check it. VAT treatment of App Store payouts specifically was not confirmed; check your own invoices.
+- **Individuals (Self Assessment):** 2023/24–2025/26 rates are standard published figures. **2026/27 is marked "provisional"** in the app and in the PDF – in particular the Scottish bands (from the Scottish Budget 2026–27), Class 2 weekly rate / small-profits threshold, student-loan thresholds and the main-pool writing-down rate (14%). Check them against HMRC before filing.
 - **Form box numbers:** the SA103F boxes 15–31 and 46 and SA105 boxes 20, 24, 26, 44, 45 were confirmed against HMRC's 2025–26 form listings. Boxes marked **†** are inferred from the form's numbering pattern, and boxes with no number are deliberately left blank. HMRC's online service asks for the same figures *by name*, so use the labels as your guide.
 - All rates live in [`server/domain/taxRates.js`](server/domain/taxRates.js) and form layouts in [`server/domain/taxReturn.js`](server/domain/taxReturn.js). Updating for a new tax year is a data change, not an engine change.
 

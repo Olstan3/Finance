@@ -18,13 +18,14 @@ export async function invoicePdf(inv, settings) {
   const doc = new PDFDocument({ size: 'A4', margin: 48, info: { Title: `${inv.kind === 'credit_note' ? 'Credit note' : 'Invoice'} ${inv.number}` } });
   const done = collect(doc);
   const p = settings.profile;
-  const biz = p.tradingName || p.name || 'Your business';
+  const co = settings.entityType === 'company';
+  const biz = co ? (settings.company.name || 'Your company') : (p.tradingName || p.name || 'Your business');
   const W = doc.page.width - 96;
   const isCredit = inv.kind === 'credit_note';
 
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(20).text(biz, 48, 48, { width: W * 0.55 });
   doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-  const addr = [p.name && p.tradingName ? p.name : '', ...String(p.address || '').split('\n'), p.postcode, p.email, p.phone].filter(Boolean).join('\n');
+  const addr = (co ? [...String(settings.company.registeredOffice || '').split('\n'), settings.company.postcode, p.email, p.phone] : [p.name && p.tradingName ? p.name : '', ...String(p.address || '').split('\n'), p.postcode, p.email, p.phone]).filter(Boolean).join('\n');
   if (addr) doc.text(addr, { width: W * 0.55 });
   if (settings.vat.registered && settings.vat.number) doc.text(`VAT no. ${settings.vat.number}`);
 
@@ -100,7 +101,8 @@ export async function invoicePdf(inv, settings) {
   if (!isCredit) block('PAYMENT DETAILS', settings.invoice.bankDetails);
   block('NOTES', inv.notes);
   block('TERMS', inv.terms);
-  if (settings.invoice.footer) doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(settings.invoice.footer, 48, doc.page.height - 70, { width: W, align: 'center' });
+  const legal = co && settings.company.number ? `${biz} – registered in England and Wales, company number ${settings.company.number}${settings.company.registeredOffice ? ', registered office ' + settings.company.registeredOffice.replace(/\n/g, ', ') : ''}` : '';
+  if (settings.invoice.footer || legal) doc.font('Helvetica').fontSize(9).fillColor(MUTED).text([settings.invoice.footer, legal].filter(Boolean).join('\n'), 48, doc.page.height - 80, { width: W, align: 'center' });
 
   if (inv.derived_status === 'paid' && !isCredit) {
     doc.save().rotate(-14, { origin: [440, 190] }).font('Helvetica-Bold').fontSize(46).fillColor('#0f5c4d').opacity(0.16).text('PAID', 380, 168, { lineBreak: false }).restore();
@@ -178,6 +180,39 @@ export async function worksheetPdf({ title, subtitle, warnings = [], forms, foot
     );
     doc.text(`Page ${i + 1} of ${range.count}`, 48 + W - 60, doc.page.height - 56, { width: 60, align: 'right' });
     doc.page.margins.bottom = bottom;
+  }
+  doc.end();
+  return done;
+}
+
+
+/** Board minutes + one dividend voucher per shareholder (draft wording – check with your accountant). */
+export async function dividendPackPdf({ company, dividend, reserves }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 56, info: { Title: `Dividend – ${company.name}` } });
+  const done = collect(doc);
+  const W = doc.page.width - 112;
+  const gbp = (p) => fmtGBP(p);
+  const totalShares = dividend.allocations.reduce((a, x) => a + x.shares, 0);
+  const perShare = totalShares ? dividend.total / totalShares : 0;
+  const perPounds = `£${(perShare / 100).toFixed(perShare >= 100 ? 2 : 4)}`; // 2 decimal places, or 4 when the amount per share is under £1
+  const head = (t) => { doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text(company.name || 'Company', 56, 56); doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(`Registered in England and Wales${company.number ? ' · company number ' + company.number : ''}${company.registeredOffice ? ' · ' + company.registeredOffice : ''}`); doc.moveDown(1.2); doc.font('Helvetica-Bold').fontSize(14).fillColor(ACCENT).text(t); doc.moveDown(0.8); doc.font('Helvetica').fontSize(11).fillColor(INK); };
+
+  head('Minutes of a meeting of the directors');
+  doc.text(`Held on ${fmtDate(dividend.declared_date)}.`, { width: W }).moveDown(0.6);
+  doc.text(`Present: ${dividend.allocations.map((a) => a.name).join(', ')}.`, { width: W }).moveDown(0.6);
+  if (reserves) doc.text(`The directors reviewed the company's records, which showed profit available for distribution of approximately ${gbp(Math.max(0, reserves.available + dividend.total))} before this dividend, and were satisfied that the company can lawfully pay the dividend below.`, { width: W }).moveDown(0.6);
+  doc.text(`IT WAS RESOLVED that an interim dividend of ${gbp(dividend.total)} (${perPounds} per ordinary share) be declared, payable on ${fmtDate(dividend.paid_date)} to the shareholders on the register on ${fmtDate(dividend.declared_date)}, as follows:`, { width: W }).moveDown(0.6);
+  for (const a of dividend.allocations) doc.text(`   ${a.name} – ${a.shares} shares – ${gbp(a.amount)}`);
+  doc.moveDown(2).text('Signed: ______________________________   Director', { width: W });
+  doc.moveDown(0.4).font('Helvetica').fontSize(8).fillColor(MUTED).text('Draft wording prepared by Ledgerline. Dividends may only be paid out of profits available for distribution; check with your accountant, and keep these minutes with your company records.', { width: W });
+
+  for (const a of dividend.allocations) {
+    doc.addPage();
+    head('Dividend voucher');
+    const rows = [['Company', company.name], ['Company number', company.number || ''], ['Date of payment', fmtDate(dividend.paid_date)], ['Shareholder', a.name], ['Number of ordinary shares held', String(a.shares)], ['Dividend per share', perPounds], ['Dividend paid', gbp(a.amount)]];
+    let y = doc.y;
+    for (const [k, v] of rows) { doc.font('Helvetica').fontSize(11).fillColor(MUTED).text(k, 56, y, { width: 220 }); doc.font('Helvetica-Bold').fillColor(INK).text(v, 280, y, { width: W - 224 }); y += 22; doc.moveTo(56, y - 4).lineTo(56 + W, y - 4).strokeColor(LINE).lineWidth(0.5).stroke(); }
+    doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('This dividend is paid without deduction of tax. There is no tax credit. Keep this voucher: you will need it for your Self Assessment tax return, where dividends are reported (the first £500 each tax year is covered by the Dividend Allowance, and the Personal Allowance may cover more if you have little other income).', 56, y + 12, { width: W });
   }
   doc.end();
   return done;

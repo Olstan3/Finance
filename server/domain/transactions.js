@@ -19,6 +19,10 @@ function check(db, d, { partial = false } = {}) {
   if (d.vat_code && !VAT_RATES[d.vat_code]) throw new ValidationError('Unknown VAT code', 'vat_code');
   if (d.business_pct != null && (!Number.isInteger(d.business_pct) || d.business_pct < 0 || d.business_pct > 100)) throw new ValidationError('Business use must be 0–100%', 'business_pct');
   if (d.vat_amount != null && !Number.isInteger(d.vat_amount)) throw new ValidationError('VAT must be whole pence', 'vat_amount');
+  if (d.spread_from || d.spread_to) {
+    if (!isISO(d.spread_from) || !isISO(d.spread_to)) throw new ValidationError('Give both the first and last day this payment covers', 'spread_from');
+    if (d.spread_to < d.spread_from) throw new ValidationError('The service period cannot end before it starts', 'spread_to');
+  }
 }
 
 export function createTransaction(db, d) {
@@ -27,11 +31,12 @@ export function createTransaction(db, d) {
   const fp = fingerprint(data);
   const r = db.run(
     `INSERT INTO transactions (account_id, date, description, amount, category_id, contact_id, invoice_id, vat_code, vat_amount, business_pct,
-       tag, notes, status, source, confidence, batch_id, document_id, fingerprint, balance, reference)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       tag, notes, status, source, confidence, batch_id, document_id, fingerprint, balance, reference, spread_from, spread_to)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     data.account_id, data.date, String(data.description).trim(), data.amount, data.category_id || null, data.contact_id || null, data.invoice_id || null,
     data.vat_code, Math.abs(data.vat_amount || 0), data.business_pct, data.tag || null, data.notes || null, data.status, data.source,
     data.confidence ?? null, data.batch_id || null, data.document_id || null, fp, data.balance ?? null, data.reference || null,
+    data.spread_from || null, data.spread_to || null,
   );
   return getTransaction(db, r.id);
 }
@@ -48,7 +53,7 @@ const SELECT = `
 
 export const getTransaction = (db, id) => db.get(`${SELECT} WHERE t.id = ?`, id);
 
-const EDITABLE = ['date', 'description', 'amount', 'category_id', 'contact_id', 'vat_code', 'vat_amount', 'business_pct', 'tag', 'notes', 'status', 'account_id', 'reference'];
+const EDITABLE = ['date', 'description', 'amount', 'category_id', 'contact_id', 'vat_code', 'vat_amount', 'business_pct', 'tag', 'notes', 'status', 'account_id', 'reference', 'spread_from', 'spread_to'];
 
 export function updateTransaction(db, id, patch) {
   const cur = db.get('SELECT * FROM transactions WHERE id = ?', id);

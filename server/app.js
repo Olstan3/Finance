@@ -9,6 +9,7 @@ import ledger from './routes/ledger.js';
 import invoices from './routes/invoices.js';
 import reports from './routes/reports.js';
 import tax from './routes/tax.js';
+import company from './routes/company.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, '..');
@@ -85,7 +86,7 @@ export function createApp({ db, publicDir = PUBLIC, allowedHosts = [] } = {}) {
   });
 
   const ctx = { db };
-  core(api, ctx); ledger(api, ctx); invoices(api, ctx); reports(api, ctx); tax(api, ctx);
+  core(api, ctx); ledger(api, ctx); invoices(api, ctx); reports(api, ctx); tax(api, ctx); company(api, ctx);
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
 

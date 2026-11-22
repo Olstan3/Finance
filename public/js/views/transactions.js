@@ -9,11 +9,14 @@ import { go } from '../main.js';
 const LIMIT = 100;
 const VAT_RATE = { S: 0.2, R: 0.05 };
 
+const plusYear = (iso) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + 1); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+
 export function TransactionModal({ txn, onClose, onSaved, defaults = {} }) {
   const { meta } = useStore();
   const vatOn = meta.settings.vat.registered;
+  const isCo = meta.settings.entityType === 'company';
   const isNew = !txn;
-  const [f, setF] = useState(() => txn ? { ...txn, direction: txn.amount >= 0 ? 'in' : 'out', abs: Math.abs(txn.amount) } : {
+  const [f, setF] = useState(() => txn ? { ...txn, direction: txn.amount >= 0 ? 'in' : 'out', abs: Math.abs(txn.amount), spread: !!txn.spread_from } : {
     date: isoToday(), description: '', direction: 'out', abs: null, category_id: null, account_id: meta.accounts.find((a) => a.kind !== 'cash')?.id || meta.accounts[0].id,
     vat_code: 'N', vat_amount: 0, business_pct: 100, contact_id: null, notes: '', tag: '', ...defaults,
   });
@@ -27,7 +30,8 @@ export function TransactionModal({ txn, onClose, onSaved, defaults = {} }) {
   const save = async () => {
     setSaving(true); setErr({});
     const body = { date: f.date, description: f.description, amount: (f.direction === 'in' ? 1 : -1) * (f.abs || 0), category_id: f.category_id, account_id: f.account_id,
-      contact_id: f.contact_id || null, vat_code: f.vat_code, vat_amount: f.vat_amount || 0, business_pct: Number(f.business_pct), notes: f.notes || '', tag: f.tag || '' };
+      contact_id: f.contact_id || null, vat_code: f.vat_code, vat_amount: f.vat_amount || 0, business_pct: Number(f.business_pct), notes: f.notes || '', tag: f.tag || '',
+      spread_from: isCo && f.spread ? f.spread_from || f.date : null, spread_to: isCo && f.spread ? f.spread_to || plusYear(f.date) : null };
     try { const saved = isNew ? await api.post('/api/transactions', body) : await api.put(`/api/transactions/${txn.id}`, body); toast(isNew ? 'Transaction added' : 'Saved'); await refreshMeta(); onSaved(saved); }
     catch (e) { setErr({ [e.field || '_']: e.message }); }
     setSaving(false);
@@ -52,6 +56,8 @@ export function TransactionModal({ txn, onClose, onSaved, defaults = {} }) {
       ${f.direction === 'out' && html`<${Field} label="Business use %" hint="Phone, car, home… only the business share is claimed" error=${err.business_pct}><input type="number" min="0" max="100" step="1" value=${f.business_pct} onInput=${(e) => set('business_pct', e.target.value)} /></${Field}>`}
       ${vatOn && html`<${Field} label="VAT code"><${VatSelect} value=${f.vat_code} meta=${meta} onChange=${(v) => { set('vat_code', v); set('vat_amount', autoVat(v, f.abs)); }} /></${Field}>
         <${Field} label="VAT included" hint=${f.direction === 'out' ? 'Only claim VAT you hold a VAT invoice for' : ''}><${MoneyInput} value=${f.vat_amount} onChange=${(v) => set('vat_amount', v || 0)} /></${Field}>`}
+      ${isCo && html`<div class="full"><label class="check"><input type="checkbox" checked=${!!f.spread} onChange=${(e) => setF((x) => ({ ...x, spread: e.target.checked, spread_from: x.spread_from || x.date, spread_to: x.spread_to || plusYear(x.date) }))} /> This ${f.direction === 'in' ? 'income' : 'cost'} covers a period (annual plan, domain renewal, prepaid hosting…)</label>
+        ${f.spread && html`<div class="form-grid" style="margin-top:8px"><${Field} label="From" error=${err.spread_from}><input type="date" value=${f.spread_from || f.date} onInput=${(e) => set('spread_from', e.target.value)} /></${Field}><${Field} label="To (last day covered)" error=${err.spread_to}><input type="date" value=${f.spread_to || plusYear(f.date)} onInput=${(e) => set('spread_to', e.target.value)} /></${Field}></div><p class="muted small" style="margin:6px 0 0">It's spread across the months it covers, so the profit for each year is fair; the part not yet used shows as ${f.direction === 'in' ? 'deferred income' : 'a prepayment'} on the balance sheet.</p>`}</div>`}
       <${Field} label="Tag" hint="e.g. a property address or project"><input type="text" value=${f.tag || ''} onInput=${(e) => set('tag', e.target.value)} /></${Field}>
       <${Field} label="Notes" class="full"><textarea value=${f.notes || ''} onInput=${(e) => set('notes', e.target.value)} /></${Field}>
     </div>

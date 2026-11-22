@@ -12,10 +12,10 @@ function TemplateModal({ t, onClose, onSaved }) {
   const { meta } = useStore();
   const vatOn = meta.settings.vat.registered;
   const contacts = useAsync(() => api.get('/api/contacts'), []);
-  const [f, setF] = useState(t ? { ...t, lines: t.lines.map((l) => ({ ...l })) } : { name: '', contact_id: null, frequency: 'monthly', interval_count: 1, start_date: isoToday(), end_date: '', max_runs: '', due_days: meta.settings.invoice.paymentTermsDays || 30, mode: 'draft', category_id: 'se_turnover', reference: '', notes: '', lines: [{ description: 'Services for {month} {year}', quantity: 1, unit_price: 0, vat_code: vatOn ? 'S' : 'N' }] });
+  const [f, setF] = useState(t ? { ...t, lines: t.lines.map((l) => ({ ...l })) } : { name: '', contact_id: null, frequency: 'monthly', interval_count: 1, start_date: isoToday(), end_date: '', max_runs: '', due_days: meta.settings.invoice.paymentTermsDays || 30, mode: 'draft', category_id: meta.settings.entityType === 'company' ? 'co_subscriptions' : 'se_turnover', reference: '', notes: '', lines: [{ description: 'Services for {month} {year}', quantity: 1, unit_price: 0, vat_code: vatOn ? 'S' : 'N' }] });
   const [err, setErr] = useState({}); const [saving, setSaving] = useState(false);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
-  const incomeCats = meta.categories.filter((c) => c.kind === 'income' && ['self_employment', 'property'].includes(c.section));
+  const incomeCats = meta.categories.filter((c) => c.kind === 'income' && !['savings', 'dividends'].includes(c.section) && c.id !== 'co_interest');
   const save = async () => {
     setSaving(true); setErr({});
     const body = { ...f, interval_count: Number(f.interval_count) || 1, due_days: Number(f.due_days), max_runs: f.max_runs ? Number(f.max_runs) : null, end_date: f.end_date || null, lines: f.lines.map((l) => ({ description: l.description, quantity: Number(l.quantity), unit_price: l.unit_price || 0, vat_code: l.vat_code })) };

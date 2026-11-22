@@ -16,6 +16,25 @@ import { pctOf } from '../util/money.js';
 
 const PROFIT_KINDS = new Set(['income', 'expense', 'capital']);
 
+/** Companies must use accruals accounting; individuals choose (cash basis is their default). */
+export const isAccruals = (settings) => settings.entityType === 'company' || settings.accountingBasis === 'accruals';
+
+const dayCount = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1; // inclusive
+/**
+ * Share of a spread transaction (service period spread_from..spread_to) that falls inside [from, to].
+ * Uses cumulative rounding, so the portions across consecutive periods always add up to the exact total.
+ */
+export function spreadPortion(value, spreadFrom, spreadTo, from, to) {
+  const total = dayCount(spreadFrom, spreadTo);
+  const lo = from > spreadFrom ? from : spreadFrom;
+  const hi = to < spreadTo ? to : spreadTo;
+  if (hi < lo || total <= 0) return { amount: 0, start: lo };
+  const before = Math.max(0, dayCount(spreadFrom, lo) - 1);
+  const through = Math.min(total, dayCount(spreadFrom, hi));
+  const F = (d) => Math.round((value * d) / total);
+  return { amount: F(through) - F(before), start: lo };
+}
+
 export function categoryMap(db) {
   return Object.fromEntries(db.all('SELECT * FROM categories').map((c) => [c.id, c]));
 }
@@ -25,14 +44,19 @@ export function categoryMap(db) {
  * Returns { entries, uncategorised, needsReview, unlinked }.
  */
 export function loadEntries(db, from, to, { settings = getSettings(db), cats = categoryMap(db) } = {}) {
-  const basis = settings.accountingBasis === 'accruals' ? 'accruals' : 'cash';
+  const basis = isAccruals(settings) ? 'accruals' : 'cash';
   const vatOn = !!settings.vat.registered;
   const entries = [];
   const uncategorised = [];
   let needsReview = 0;
 
-  // ---- bank / cash transactions ----
-  const txns = db.all('SELECT * FROM transactions WHERE date >= ? AND date <= ? ORDER BY date, id', from, to);
+  // ---- bank / cash transactions. Under accruals, a transaction with a service period (prepaid hosting,
+  // an annual subscription paid up front…) is spread by day across the periods it covers.
+  const txns = basis === 'accruals'
+    ? db.all(
+      `SELECT * FROM transactions WHERE (spread_from IS NULL AND date >= ? AND date <= ?)
+         OR (spread_from IS NOT NULL AND spread_to IS NOT NULL AND spread_from <= ? AND spread_to >= ?) ORDER BY date, id`, from, to, to, from)
+    : db.all('SELECT * FROM transactions WHERE date >= ? AND date <= ? ORDER BY date, id', from, to);
   for (const t of txns) {
     if (t.status === 'ignored') continue;
     if (basis === 'accruals' && t.invoice_id) continue; // settlement of an invoice recognised on issue
@@ -42,22 +66,30 @@ export function loadEntries(db, from, to, { settings = getSettings(db), cats = c
     if (!PROFIT_KINDS.has(cat.kind)) continue;
     const vatMag = vatOn ? Math.abs(t.vat_amount || 0) : 0;
     const vatSigned = t.amount < 0 ? -vatMag : vatMag;
-    const value = t.amount - vatSigned; // signed, same direction as the cash movement
     const pct = (t.business_pct ?? 100) / 100;
+    let value = t.amount - vatSigned; // signed, same direction as the cash movement
+    let gross = t.amount, vatS = vatSigned, date = t.date;
+    if (t.spread_from && t.spread_to) {
+      const share = (v) => spreadPortion(v, t.spread_from, t.spread_to, from, to);
+      const sv = share(value);
+      if (sv.amount === 0) continue;
+      value = sv.amount; gross = share(t.amount).amount; vatS = share(vatSigned).amount; date = sv.start;
+    }
+    const tt = date === t.date ? t : { ...t, date };
     if (cat.kind === 'income') {
-      entries.push(entry({ t, cat, src: 'txn', kind: 'income', net: value, vat: vatSigned, gross: t.amount, pct: 1 }));
+      entries.push(entry({ t: tt, cat, src: 'txn', kind: 'income', net: value, vat: vatS, gross, pct: 1 }));
     } else {
       // Expenses: money out is negative, so flip to a positive cost.
       const kind = cat.kind === 'capital' ? 'capital' : 'expense';
-      entries.push(entry({ t, cat, src: 'txn', kind, net: pctOf(-value, pct), vat: pctOf(-vatSigned, pct), gross: pctOf(-t.amount, pct), pct }));
+      entries.push(entry({ t: tt, cat, src: 'txn', kind, net: pctOf(-value, pct), vat: pctOf(-vatS, pct), gross: pctOf(-gross, pct), pct }));
     }
   }
 
-  // ---- invoices (accruals basis: recognised on issue date) ----
+  // ---- invoices (accruals basis: recognised on issue date)
   if (basis === 'accruals') {
     const invs = db.all("SELECT * FROM invoices WHERE issue_date >= ? AND issue_date <= ? AND status NOT IN ('draft','void')", from, to);
     for (const inv of invs) {
-      const cat = cats[inv.category_id] || cats.se_turnover;
+      const cat = cats[inv.category_id] || cats[settings.entityType === 'company' ? 'co_subscriptions' : 'se_turnover'];
       const lines = db.all('SELECT * FROM invoice_lines WHERE invoice_id = ?', inv.id);
       const sign = inv.kind === 'credit_note' ? -1 : 1;
       let net = 0, vat = 0;

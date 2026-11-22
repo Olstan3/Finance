@@ -123,6 +123,12 @@ CREATE TABLE IF NOT EXISTS vat_returns (
   boxes TEXT NOT NULL, filed_at TEXT, reference TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS dividends (
+  id INTEGER PRIMARY KEY, declared_date TEXT NOT NULL, paid_date TEXT NOT NULL, total INTEGER NOT NULL,
+  allocations TEXT NOT NULL DEFAULT '[]', account_id INTEGER, txn_id INTEGER, notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY, ts TEXT NOT NULL DEFAULT (datetime('now')), entity TEXT, entity_id TEXT,
   action TEXT, detail TEXT
@@ -137,6 +143,14 @@ export function openDb(file = path.join(DATA_DIR, 'ledger.sqlite')) {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   const v = db.prepare('PRAGMA user_version').get().user_version;
   db.exec(SCHEMA);
+  // Additive migrations for databases created by earlier versions.
+  const addColumn = (table, col, def) => {
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  };
+  addColumn('transactions', 'spread_from', 'TEXT'); // service period start (prepayment / deferred income)
+  addColumn('transactions', 'spread_to', 'TEXT');
+  addColumn('assets', 'life_years', 'INTEGER NOT NULL DEFAULT 3'); // accounting depreciation life
+  addColumn('accounts', 'director_id', 'TEXT'); // for director's-loan accounts
   if (v < SCHEMA_VERSION) db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   seedCategories(db);
 
@@ -174,6 +188,11 @@ export function openDb(file = path.join(DATA_DIR, 'ledger.sqlite')) {
 // ---------------- settings ----------------
 
 export const DEFAULT_SETTINGS = {
+  entityType: 'individual', // 'individual' (sole trader / landlord) | 'company' (limited company)
+  company: {
+    name: '', number: '', utr: '', incorporationDate: '', yearEndMonth: 3, yearEndDay: 31, registeredOffice: '', postcode: '',
+    shareCapital: 100, associatedCompanies: 0, sicCode: '', natureOfBusiness: '', directors: [],
+  },
   profile: {
     name: '', tradingName: '', utr: '', nino: '', email: '', phone: '', address: '', postcode: '',
     businessDescription: '', businessPostcode: '', region: 'england', aliases: '',
