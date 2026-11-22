@@ -180,6 +180,8 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .ws-row .box { color: var(--ink-2); font-size: .8rem; }
 .ws-row.emph { background: var(--accent-soft); font-weight: 650; }
 .ws-row .val { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ws-row .val.wrap { white-space: normal; max-width: 26em; overflow-wrap: anywhere; }
+.ws-row > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
 .ws-title { font-weight: 650; padding: 12px 10px 6px; border-bottom: 2px solid var(--ink); margin-top: 10px; }
 .ws-drill { background: none; border: 0; cursor: pointer; color: var(--accent); padding: 0 0 0 6px; font-size: .8rem; text-decoration: underline; }
 
@@ -223,7 +225,8 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
   .tile .value { font-size: 1.25rem; }
   .hero { font-size: 2rem !important; }
   .form-grid .span2 { grid-column: auto; }
-  .ws-row { grid-template-columns: 54px 1fr auto; }
+  .ws-row { grid-template-columns: 54px minmax(0, 1fr) auto; }
+  .ws-row .val.wrap { max-width: 45vw; }
 }
 @media print {
   .side, .topbar, .actions, .filters, .toasts, .tabs, .btn { display: none !important; }

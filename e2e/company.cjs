@@ -220,6 +220,15 @@ const step = async (name, fn) => {
     await shot('08_dashboard');
   });
 
+  await step('mobile: no company page overflows a phone screen', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const tab of ['overview', 'accounts', 'computation', 'directors', 'assets']) {
+      await fresh(`/#/tax?tab=${tab}`); await page.waitForTimeout(600);
+      const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      assert.ok(o <= 1, `${tab} tab overflows by ${o}px`);
+    }
+  });
+
   await browser.close();
   await stop();
   console.log(problems.length ? `\n${problems.length} PROBLEM(S): ${problems.join(' | ')}` : '\nALL COMPANY E2E STEPS PASSED');
