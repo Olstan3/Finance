@@ -223,6 +223,12 @@ Received £600 from Mrs Patel on 5/3/2025 - invoice paid
   assert.deepEqual(r.items.map((i) => i.date), ['2025-03-03', '2025-03-05']);
 });
 
+test('notes: the date and the word introducing it are removed from the description', () => {
+  const r = run('Paid £45.50 to Screwfix on 3 March 2025 for tools\nBought paper dated 4/3/2025 £12.00');
+  assert.equal(r.items[0].description, 'Paid to Screwfix for tools');
+  assert.equal(r.items[1].description, 'Bought paper');
+});
+
 test('empty or amount-free text yields a clear warning, not garbage', () => {
   const r = run('Hello world, no money here.');
   assert.equal(r.items.length, 0);

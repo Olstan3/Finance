@@ -9,6 +9,7 @@ import { currentTaxYear, today } from '../util/dates.js';
 import { mailConfigured } from '../mail.js';
 import { accountBalances } from '../domain/reports.js';
 import { merchantKey } from '../domain/categorizer.js';
+import { seedDemo, resetAll, isEmpty } from '../seed.js';
 
 const bad = (msg, field) => { throw new ValidationError(msg, field); };
 const idOf = (req) => { const n = Number(req.params.id); if (!Number.isInteger(n)) { const e = new Error('Not found'); e.status = 404; throw e; } return n; };
@@ -175,6 +176,14 @@ export default function core(r, { db }) {
     const id = db.run('INSERT INTO rules (pattern, match_type, direction, category_id, business_pct, priority) VALUES (?, ?, ?, ?, ?, ?)', key, 'contains', t.amount > 0 ? 'in' : 'out', t.category_id, t.business_pct, 100).id;
     const applied = db.run("UPDATE transactions SET category_id = ?, business_pct = ?, status = 'confirmed' WHERE category_id IS NULL AND LOWER(description) LIKE ? AND (amount > 0) = ?", t.category_id, t.business_pct, `%${key}%`, t.amount > 0 ? 1 : 0).changes;
     res.status(201).json({ rule: db.get('SELECT * FROM rules WHERE id = ?', id), applied });
+  });
+
+  // ---- demo data / reset
+  r.post('/demo/load', (req, res) => res.status(201).json(seedDemo(db)));
+  r.post('/admin/reset', (req, res) => {
+    if (req.body?.confirm !== 'DELETE') bad('Type DELETE to confirm.');
+    resetAll(db); audit(db, 'admin', 'all', 'reset');
+    res.json({ ok: true, empty: isEmpty(db) });
   });
 
   // ---- backup / export

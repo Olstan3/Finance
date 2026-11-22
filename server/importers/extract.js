@@ -286,7 +286,9 @@ function extractNotes(lines, ctx) {
     const dts = findDates(t, dateOpts);
     const amounts = findAmounts(maskRanges(t, dts)).filter((a) => a.hasDecimals || a.currency);
     if (!amounts.length) continue;
-    const spans = [...dts, ...amounts].map((x) => ({ index: x.index, length: x.length }));
+    // Drop the date together with the word that introduces it ("on 3 March", "dated 3/3/25").
+    const dateSpans = dts.map((d) => { const m = t.slice(0, d.index).match(/\b(?:on|dated|date|from)\s+$/i); return m ? { index: d.index - m[0].length, length: d.length + m[0].length } : { index: d.index, length: d.length }; });
+    const spans = [...dateSpans, ...amounts.map((x) => ({ index: x.index, length: x.length }))];
     const description = cleanDescription(maskRanges(t, spans).replace(/\b(?:on|dated|for|of)\s*$/i, '').replace(/\s+/g, ' '));
     const a = amounts[0];
     const out = /\b(paid to|paid for|paid|bought|purchase[d]?|spent|cost|fee|bill|subscription|expense)\b/i.test(t);

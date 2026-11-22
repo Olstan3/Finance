@@ -85,7 +85,7 @@ export async function invoicePdf(inv, settings) {
   if (settings.vat.registered || inv.totals.vat) row('VAT', fmtGBP(inv.totals.vat));
   doc.moveTo(tx, ty - 2).lineTo(tx + tw, ty - 2).strokeColor(INK).lineWidth(0.8).stroke(); ty += 4;
   row(isCredit ? 'Total credit' : 'Total', fmtGBP(inv.totals.gross), true);
-  if (inv.paid) row(isCredit ? 'Refunded' : 'Paid', fmtGBP(-inv.paid), false, MUTED);
+  if (inv.paid) row(isCredit ? 'Refunded' : 'Paid', fmtGBP(inv.paid), false, MUTED);
   if (!isCredit) row('Balance due', fmtGBP(inv.outstanding), true, inv.outstanding > 0 ? ACCENT : MUTED);
 
   // Payment details, notes
@@ -103,7 +103,7 @@ export async function invoicePdf(inv, settings) {
   if (settings.invoice.footer) doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(settings.invoice.footer, 48, doc.page.height - 70, { width: W, align: 'center' });
 
   if (inv.derived_status === 'paid' && !isCredit) {
-    doc.save().rotate(-18, { origin: [420, 330] }).font('Helvetica-Bold').fontSize(54).fillColor('#0f5c4d').opacity(0.14).text('PAID', 330, 300).restore();
+    doc.save().rotate(-14, { origin: [440, 190] }).font('Helvetica-Bold').fontSize(46).fillColor('#0f5c4d').opacity(0.16).text('PAID', 380, 168, { lineBreak: false }).restore();
   }
   doc.end();
   return done;
@@ -150,15 +150,17 @@ export async function worksheetPdf({ title, subtitle, warnings = [], forms, foot
       doc.y += 6;
       for (const r of page.rows) {
         const val = fmtVal(r);
-        const labelW = W - 70 - 150;
-        const h = Math.max(doc.heightOfString(r.label, { width: labelW }), doc.heightOfString(val, { width: 150 })) + 7;
+        const VALW = 210; // value column width – used both to measure and to draw, so wrapped values never overrun the divider
+        const labelW = W - 70 - VALW - 8;
+        doc.font(r.emphasis ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5);
+        const h = Math.max(doc.heightOfString(r.label, { width: labelW }), doc.heightOfString(val, { width: VALW })) + 7;
         ensure(h + 4);
         const y = doc.y;
         if (r.emphasis) doc.rect(48, y - 2, W, h).fill('#eef5f3');
         doc.font(r.emphasis ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5).fillColor(MUTED);
         doc.text(r.box ? `Box ${r.box}${r.inferred ? '†' : ''}` : '', 52, y, { width: 62 });
         doc.fillColor(INK).text(r.label, 118, y, { width: labelW });
-        doc.text(val, 48 + W - 150, y, { width: 146, align: 'right' });
+        doc.text(val, 48 + W - VALW - 4, y, { width: VALW, align: 'right' });
         doc.y = y + h;
         doc.moveTo(48, doc.y - 3).lineTo(48 + W, doc.y - 3).strokeColor(LINE).lineWidth(0.4).stroke();
       }
@@ -168,11 +170,14 @@ export async function worksheetPdf({ title, subtitle, warnings = [], forms, foot
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
+    const bottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0; // text below the margin would otherwise trigger an automatic new page
     doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(
       footer || 'Prepared by Ledgerline from your records. This is a worksheet, not an HMRC form – enter these figures in HMRC\'s online service or approved software and check them before filing. † box number inferred from the form layout.',
       48, doc.page.height - 56, { width: W - 60, lineBreak: true },
     );
     doc.text(`Page ${i + 1} of ${range.count}`, 48 + W - 60, doc.page.height - 56, { width: 60, align: 'right' });
+    doc.page.margins.bottom = bottom;
   }
   doc.end();
   return done;

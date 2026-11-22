@@ -4,7 +4,7 @@ import { buildTaxReturn } from './taxReturn.js';
 import { receivablesAging, listInvoices } from './invoices.js';
 import { listTemplates, previewDates } from './recurring.js';
 import { vatThresholdCheck, vatPeriods, vatDueDate } from './vat.js';
-import { taxYearRange, currentTaxYear, today, quarterlyPeriods, filingDeadline, taxYearStartYear, addDays, MONTHS } from '../util/dates.js';
+import { taxYearRange, currentTaxYear, previousTaxYear, today, quarterlyPeriods, filingDeadline, taxYearStartYear, addDays, fmtDate, MONTHS } from '../util/dates.js';
 import { THRESHOLDS } from './taxRates.js';
 
 /** Profit & loss grouped by category for a tax year or an arbitrary range. */
@@ -88,16 +88,20 @@ export function dashboard(db, taxYear = currentTaxYear()) {
   const overdue = listInvoices(db, { status: 'overdue' }, asOf);
   const drafts = listInvoices(db, { status: 'draft' }, asOf).length;
 
+  // Deadlines depend on today's date, not on whichever tax year is on screen.
   const deadlines = [];
-  const add = (date, title, detail, kind) => { if (date >= addDays(asOf, -30)) deadlines.push({ date, title, detail, kind, daysAway: Math.round((Date.parse(date) - Date.parse(asOf)) / 86400000) }); };
-  const sy = taxYearStartYear(taxYear);
-  add(filingDeadline(taxYear), `Self Assessment ${taxYear}: file and pay`, 'Online filing and balancing payment deadline', 'tax');
-  add(`${sy + 1}-07-31`, 'Second payment on account', 'For the previous tax year', 'tax');
-  add(`${sy}-10-31`, `Paper return deadline for ${taxYear.replace(/(\d{4})-(\d{2})/, (m, a) => `${a - 1}-${String(a).slice(2)}`)}`, '', 'tax');
-  if (settings.vat.registered) {
-    for (const p of vatPeriods(settings.vat.stagger || 1, asOf, 2)) add(p.due, `VAT return for period ending ${p.end}`, `Period ${p.start} to ${p.end}`, 'vat');
+  const add = (date, title, detail, kind) => { if (date >= addDays(asOf, -7)) deadlines.push({ date, title, detail, kind, daysAway: Math.round((Date.parse(date) - Date.parse(asOf)) / 86400000) }); };
+  const cur = currentTaxYear();
+  for (const y of [previousTaxYear(cur), cur]) {
+    const sy = taxYearStartYear(y);
+    const next = `${sy + 1}-${String((sy + 2) % 100).padStart(2, '0')}`;
+    add(filingDeadline(y), `Self Assessment ${y}: file your return and pay`, 'Balancing payment, plus the first payment on account for the next year', 'tax');
+    add(`${sy + 2}-07-31`, `Second payment on account for ${next}`, '', 'tax');
   }
-  for (const q of quarterlyPeriods(taxYear, settings.mtd.quarterlyScheme)) add(q.due, `MTD quarterly update ${q.n}`, `${q.start} to ${q.end}`, 'mtd');
+  if (settings.vat.registered) {
+    for (const p of vatPeriods(settings.vat.stagger || 1, asOf, 2)) add(p.due, `VAT return for the period ending ${fmtDate(p.end)}`, `Covers ${fmtDate(p.start)} to ${fmtDate(p.end)}`, 'vat');
+  }
+  for (const q of quarterlyPeriods(cur, settings.mtd.quarterlyScheme)) add(q.due, `MTD quarterly update ${q.n} (if you're required to)`, `Covers ${fmtDate(q.start)} to ${fmtDate(q.end)}`, 'mtd');
   deadlines.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   const upcomingRecurring = listTemplates(db).filter((t) => t.active).flatMap((t) => previewDates(t, 1).map((d) => ({ id: t.id, name: t.name, contact: t.contact_name, date: d }))).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5);

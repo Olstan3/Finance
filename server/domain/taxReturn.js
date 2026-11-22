@@ -231,7 +231,6 @@ export function buildTaxReturn(db, taxYear, opts = {}) {
 function buildWarnings({ taxYear, R, settings, ledger, se, prop, calc, inputs, disposalRows }) {
   const w = [];
   const add = (level, text, action) => w.push({ level, text, action });
-  if (R.status === 'provisional') add('warn', `${taxYear} rates are provisional – the figures may change once HMRC publishes final rates.`);
   if (ledger.uncategorised.length) add('error', `${ledger.uncategorised.length} transaction(s) in this tax year have no category and are NOT included in the figures below.`, { view: 'transactions', filter: { taxYear, uncategorised: 1 } });
   if (ledger.needsReview) add('warn', `${ledger.needsReview} transaction(s) were categorised automatically and still need a quick review.`, { view: 'transactions', filter: { taxYear, status: 'review' } });
   const p = settings.profile;
@@ -325,8 +324,8 @@ function buildForms({ taxYear, settings, R, se, prop, employment, inputs, intere
   const expRows = se.expenses.map((e) => money(e.label, e.amount, { box: String(e.box), field: e.field }));
   const disRows = se.expenses.filter((e) => e.disallowable).map((e) => money(`Disallowable: ${e.label}`, e.disallowable, { box: String(e.box + 15), inferred: true }));
   forms.push({
-    id: 'SA103F', title: `SA103${se.useShortForm ? 'S/F' : 'F'} – Self-employment`, applies: se.active,
-    intro: `Accounting period ${period}. ${basis === 'cash' ? 'Cash basis' : 'Traditional (accruals) accounting'}. ${se.useShortForm ? 'Turnover is under £90,000, so you may use the short form (SA103S): its income and expense figures are the same as below.' : 'Use the full form (SA103F).'}`,
+    id: 'SA103F', title: 'SA103F – Self-employment (full pages)', applies: se.active,
+    intro: `Accounting period ${period}. ${basis === 'cash' ? 'Cash basis' : 'Traditional (accruals) accounting'}. Box numbers below are those of the full form SA103F. ${se.useShortForm ? 'Your turnover is under £90,000, so you may be able to use the short form SA103S instead – its boxes are numbered differently, but HMRC asks for the same figures by name, so use the labels, not the box numbers.' : 'Your turnover is over £90,000, so the full form SA103F is the one to use.'}`,
     pages: [
       { title: 'Business details', rows: [
         text('Business name', p.tradingName || p.name), text('Description of business', p.businessDescription),
